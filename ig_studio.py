@@ -1,7 +1,7 @@
 """IG Studio: a local Instagram carousel editor for folders of DSLR exports.
 
-Run:  python ig_studio.py            (needs Pillow)
-Then the editor opens at http://localhost:5178/.
+Run:  python ig_studio.py [trip folder] [--port=5178] [--no-browser]   (needs Pillow)
+Then the editor opens at http://localhost:5178/. The same arguments work for IGStudio.exe.
 
 The server reads photos straight from disk, serves cached preview thumbnails to the
 browser, and renders exported slides with Pillow into <trip>/_instagram/<post>/.
@@ -24,12 +24,14 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from PIL import Image, ImageCms, ImageOps
 
-HERE = Path(__file__).resolve().parent
-PORT = int(os.environ.get("PORT", 5178))
+# Bundled files live in a temporary unpack folder when running as IGStudio.exe.
+HERE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+FROZEN = getattr(sys, "frozen", False)
+PORT = 5178
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
 OUT_DIR = "_instagram"
 LAYOUT_FILE = "layout.json"
@@ -42,6 +44,7 @@ ROOT_POST = "."  # post key for photos directly inside the trip folder
 SRGB = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
 SRGB_BYTES = SRGB.tobytes()
 
+INFO_POOL = ThreadPoolExecutor(max_workers=8)  # header reads only; never queued behind thumbnails
 THUMB_POOL = ThreadPoolExecutor(max_workers=max(4, (os.cpu_count() or 4) - 2))
 EXPORT_POOL = ThreadPoolExecutor(max_workers=os.cpu_count() or 4)
 _thumb_jobs = {}
@@ -134,21 +137,22 @@ def open_trip(root: str):
                      key=lambda d: natural_key(d.name))
     keys += [d.name for d in subdirs if any(is_image(p) for p in d.iterdir())]
 
-    posts = []
+    posts, all_files = [], []
     for key in keys:
         src, out = resolve_post(str(root_dir), key)
         files = list_images(src)
-        photos = [x for x in THUMB_POOL.map(safe_info, files) if x]
+        all_files += files
         posts.append({
             "key": key,
             "name": out.name,
-            "photos": photos,
+            "photos": [x for x in INFO_POOL.map(safe_info, files) if x],
             "layout": read_layout(out),
             "exported": out.is_dir() and any(SLIDE_RE.match(f.name) for f in out.iterdir()),
         })
-        for f in files:  # warm the thumbnail cache in the background
-            thumb_job(f)
+    for f in all_files:  # warm the thumbnail cache in the background, first post first
+        thumb_job(f)
     remember_root(str(root_dir))
+    print(f"Opened {root_dir}: {len(posts)} posts, {len(all_files)} photos")
     return {"root": str(root_dir), "posts": posts}
 
 
@@ -234,7 +238,8 @@ def render_slide(src_dir: Path, spec, W: int, H: int, bg) -> Image.Image:
         # Decode only at the resolution this cell needs.
         scale = max(w / max(1e-6, (u1 - u0) * fw), h / max(1e-6, (v1 - v0) * fh))
         im = open_oriented(p, (fw * scale, fh * scale))
-        box = (u0 * im.width, v0 * im.height, u1 * im.width, v1 * im.height)
+        box = (max(0.0, u0 * im.width), max(0.0, v0 * im.height),
+               min(float(im.width), u1 * im.width), min(float(im.height), v1 * im.height))
         canvas.paste(im.resize((w, h), Image.LANCZOS, box=box), (x, y))
         im.close()
     return canvas
@@ -259,7 +264,9 @@ def export_post(body):
 
     list(EXPORT_POOL.map(save, enumerate(images)))
     save_layout(body["root"], body["key"], body["layout"])
-    return {"count": len(files), "dir": str(out_dir), "ms": round((time.perf_counter() - t0) * 1000)}
+    ms = round((time.perf_counter() - t0) * 1000)
+    print(f"Exported {len(files)} slides to {out_dir} in {ms} ms")
+    return {"count": len(files), "dir": str(out_dir), "ms": ms}
 
 
 def save_layout(root, key, layout):
@@ -290,19 +297,22 @@ def remember_root(root: str):
         pass
 
 
-PICK_SCRIPT = r"""
-import sys, tkinter as tk
-from tkinter import filedialog
-r = tk.Tk(); r.withdraw(); r.attributes('-topmost', True)
-print(filedialog.askdirectory(title='Choose a trip folder', initialdir=sys.argv[1] or None) or '')
-"""
+def folder_dialog(start: str):
+    """Runs in a child process (python ig_studio.py --pick-folder) so Tk stays off the server's threads."""
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    print(filedialog.askdirectory(title="Choose a trip folder", initialdir=start or None) or "")
 
 
 def pick_folder():
     recent = load_prefs().get("recent", [])
     start = str(Path(recent[0]).parent) if recent else ""
-    # A separate process keeps Tk off the server's threads.
-    r = subprocess.run([sys.executable, "-c", PICK_SCRIPT, start], capture_output=True, text=True, timeout=600)
+    me = [sys.executable] if FROZEN else [sys.executable, str(Path(__file__).resolve())]
+    r = subprocess.run(me + ["--pick-folder", start], capture_output=True, text=True, timeout=600)
     return {"path": str(Path(r.stdout.strip())) if r.stdout.strip() else ""}
 
 
@@ -386,17 +396,34 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(e)
 
 
+class Server(ThreadingHTTPServer):
+    # On Windows SO_REUSEADDR lets a second instance bind a port that is already in use,
+    # so a second launch would never notice the first one.
+    allow_reuse_address = sys.platform != "win32"
+    daemon_threads = True
+
+
 def main():
+    global PORT
+    args = sys.argv[1:]
+    if args[:1] == ["--pick-folder"]:
+        return folder_dialog(args[1] if len(args) > 1 else "")
+    PORT = next((int(a.split("=", 1)[1]) for a in args if a.startswith("--port=")), PORT)
+    open_browser = not any(a in ("--no-browser", "--no-open") for a in args)
+    folders = [a for a in args if not a.startswith("--")]
+
     url = f"http://localhost:{PORT}/"
+    if folders:  # e.g. a folder dragged onto the exe
+        url += "?root=" + quote(str(Path(folders[0]).resolve()))
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        server = Server(("127.0.0.1", PORT), Handler)
     except OSError:
         print(f"IG Studio is already running: {url}")
-        if "--no-open" not in sys.argv:
+        if open_browser:
             webbrowser.open(url)
         return
-    print(f"IG Studio running at {url}  (close this window to stop)")
-    if "--no-open" not in sys.argv:
+    print(f"IG Studio running at http://localhost:{PORT}/  (close this window to stop)")
+    if open_browser:
         threading.Timer(0.5, webbrowser.open, args=(url,)).start()
     try:
         server.serve_forever()

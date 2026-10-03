@@ -360,11 +360,17 @@ function loadThumbs(p) {
   for (const ph of p.photos.values()) {
     if (ph.img || ph.loading) continue;
     ph.loading = true;
-    const img = new Image();
-    img.onload = () => { ph.img = img; render(); };
-    img.onerror = () => { ph.loading = false; };
-    img.src = `/api/thumb?root=${encodeURIComponent(state.root)}&key=${encodeURIComponent(p.key)}`
+    const url = `/api/thumb?root=${encodeURIComponent(state.root)}&key=${encodeURIComponent(p.key)}`
       + `&name=${encodeURIComponent(ph.id)}&v=${ph.v}`;
+    let tries = 0;
+    const load = () => {
+      const img = new Image();
+      img.onload = () => { ph.img = img; render(); };
+      // Antivirus web shields sometimes reset local connections; retry with backoff.
+      img.onerror = () => { if (++tries < 4) setTimeout(load, 400 * tries); else ph.loading = false; };
+      img.src = tries ? `${url}&retry=${tries}` : url;
+    };
+    load();
   }
 }
 
@@ -1117,7 +1123,8 @@ function exportSpec(p, width) {
         ops.push({
           name: c.p, full: [ph.w, ph.h],
           dest: [x0 - f0, r[1], x1 - x0, r[3]],
-          src: [(sx + sw * t0) / ph.w, sy / ph.h, (sx + sw * t1) / ph.w, (sy + sh) / ph.h],
+          // Clamp away floating-point overshoot when a photo exactly fills its cell.
+          src: [(sx + sw * t0) / ph.w, sy / ph.h, (sx + sw * t1) / ph.w, (sy + sh) / ph.h].map(v => clamp(v, 0, 1)),
         });
       });
       files.push({ ops });
@@ -1208,7 +1215,15 @@ new ResizeObserver(() => render()).observe(editor.parentElement);
 // Debug/test hook.
 window.igStudio = { state, openRoot, exportSpec };
 
-loadRecent();
+// A folder passed on the command line (or dragged onto the exe) arrives as ?root=...
+const startRoot = new URLSearchParams(location.search).get('root');
+if (startRoot) {
+  history.replaceState(null, '', '/');
+  $('#rootPath').value = startRoot;
+  openRoot(startRoot);
+} else {
+  loadRecent();
+}
 render();
 </script>
 </body>
