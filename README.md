@@ -43,7 +43,7 @@ it, nudge the details, and export. Every post is ready to upload in a few minute
 
 ![The exported carousel: collage cover, single, resized stack, and a two-slide spread](docs/carousel.jpg)
 
-<sub>Screenshots: Banff and the Icefields Parkway, shot on a Nikon D7500.</sub>
+<sub>Screenshots: National Museum of the US Air Force and a road trip, shot on a Nikon Z50.</sub>
 
 ## Quick start: portable exe (nothing to install)
 
