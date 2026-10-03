@@ -1,0 +1,1215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IG Studio</title>
+<style>
+  :root {
+    --bg: #131315; --panel: #1b1b1f; --panel2: #24242a; --line: #303038;
+    --text: #e9e9ec; --muted: #9b9ba6; --accent: #4c8dff; --warn: #ffb547; --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+    display: grid; height: 100vh; overflow: hidden;
+    grid-template-columns: 200px 1fr 270px;
+    grid-template-rows: 48px 1fr 150px;
+    grid-template-areas: "head head head" "posts main panel" "posts strip panel";
+  }
+  button, select, input { font: inherit; color: inherit; }
+  button {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 10px; cursor: pointer; white-space: nowrap;
+  }
+  button:hover:not(:disabled) { border-color: #4a4a55; background: #2c2c33; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: #3d7ef0; }
+  select, input[type=number], input[type=text] {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; width: 100%;
+  }
+
+  header {
+    grid-area: head; display: flex; align-items: center; gap: 8px;
+    padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  header .brand { font-weight: 600; margin-right: 4px; }
+  #rootPath { width: 340px; flex: none; }
+  header .title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header .spacer { flex: 1; }
+  .badge { padding: 2px 8px; border-radius: 10px; background: var(--panel2); color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .badge.warn { color: #1a1a1a; background: var(--warn); }
+  .badge.bad { color: #fff; background: var(--bad); }
+
+  #posts { grid-area: posts; border-right: 1px solid var(--line); background: var(--panel); overflow-y: auto; padding: 8px; }
+  #posts h3, #panel h3 { margin: 6px 4px 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  .post {
+    padding: 8px 10px; border-radius: 6px; cursor: pointer; margin-bottom: 2px;
+    display: flex; justify-content: space-between; gap: 6px; align-items: baseline;
+  }
+  .post:hover { background: var(--panel2); }
+  .post.active { background: #2a3550; }
+  .post .meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .post .done { color: #6fd08c; }
+
+  main { grid-area: main; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 16px; }
+  #editor { display: block; touch-action: none; box-shadow: 0 4px 30px rgba(0,0,0,.5); }
+  #hint { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; color: var(--muted); font-size: 12px; pointer-events: none; }
+
+  #strip {
+    grid-area: strip; border-top: 1px solid var(--line); background: var(--panel);
+    display: flex; gap: 10px; padding: 10px 12px; overflow-x: auto; align-items: flex-start; user-select: none;
+  }
+  .thumb { flex: none; cursor: pointer; text-align: center; color: var(--muted); font-size: 11px; touch-action: none; }
+  .thumb canvas { display: block; border: 2px solid transparent; border-radius: 3px; margin-bottom: 3px; }
+  .thumb.active canvas { border-color: var(--accent); }
+
+  #panel { grid-area: panel; border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; overflow-x: hidden; padding: 8px 12px 16px; }
+  .group { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 10px; }
+  .row { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 8px; margin: 6px 0; }
+  .row label { color: var(--muted); }
+  .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  #regen { width: 100%; margin-top: 10px; padding: 9px; font-weight: 600; }
+  .check { display: flex; gap: 6px; align-items: center; color: var(--muted); margin: 6px 0; cursor: pointer; }
+  #tray { display: flex; flex-wrap: wrap; gap: 6px; }
+  #tray canvas { cursor: pointer; border-radius: 3px; }
+  #tray canvas:hover { outline: 2px solid var(--accent); }
+  .muted { color: var(--muted); font-size: 12px; }
+  .gaprow { display: grid; grid-template-columns: 90px minmax(0, 1fr) 36px; align-items: center; gap: 8px; }
+  .gaprow input { width: 100%; min-width: 0; margin: 0; }
+
+  #empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--muted); text-align: center; padding: 20px; }
+  #empty button { font-size: 15px; padding: 10px 20px; }
+  #empty p { max-width: 440px; margin: 0; }
+
+  #ghost { position: fixed; pointer-events: none; z-index: 30; border: 2px solid var(--warn); border-radius: 4px; box-shadow: 0 6px 20px rgba(0,0,0,.6); }
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 10; font-size: 15px; }
+  #overlay.show { display: flex; }
+  #overlay div { background: var(--panel); padding: 18px 26px; border-radius: 10px; border: 1px solid var(--line); }
+  #toast {
+    position: fixed; bottom: 166px; left: 50%; transform: translateX(-50%); background: #2d2d35; border: 1px solid var(--line);
+    padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 11; max-width: 70vw;
+  }
+  #toast.show { opacity: 1; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">IG Studio</span>
+  <input type="text" id="rootPath" list="recent" placeholder="Trip folder path, e.g. D:\Photos\Portugal" spellcheck="false">
+  <datalist id="recent"></datalist>
+  <button id="browseBtn">Browse…</button>
+  <button id="openBtn">Open</button>
+  <span class="spacer"></span>
+  <span class="title" id="postTitle"></span>
+  <span class="badge" id="countBadge"></span>
+  <span class="spacer"></span>
+  <button id="undoBtn" title="Undo (Ctrl+Z)">↶</button>
+  <button id="redoBtn" title="Redo (Ctrl+Y)">↷</button>
+  <button id="revealBtn" title="Open the export folder in Explorer">📂</button>
+  <button id="exportBtn" class="primary">Export post</button>
+  <button id="exportAllBtn">Export all</button>
+</header>
+
+<aside id="posts">
+  <h3>Posts</h3>
+  <div id="postList"><div class="muted" style="padding:4px">No folder open</div></div>
+</aside>
+
+<main>
+  <canvas id="editor" class="hidden"></canvas>
+  <div id="hint" class="hidden">Drag photo to reposition · Scroll to zoom · Drag a divider to resize · Shift+drag a photo onto any photo (here or in the strip) to swap</div>
+  <div id="empty">
+    <button class="primary" id="browseBtn2">Choose trip folder…</button>
+    <p>Each subfolder becomes one post; photos directly inside the folder also form a post.
+       Slides are exported to <b>_instagram\&lt;post&gt;</b> inside the trip folder.</p>
+  </div>
+</main>
+
+<div id="strip"></div>
+
+<aside id="panel">
+  <div class="group">
+    <h3>Post layout</h3>
+    <div class="row"><label for="ratio">Ratio</label>
+      <select id="ratio">
+        <option value="4:5">4:5 portrait</option>
+        <option value="3:4">3:4 portrait</option>
+        <option value="1:1">1:1 square</option>
+        <option value="3:2">3:2 landscape</option>
+      </select></div>
+    <div class="row"><label for="style">Style</label>
+      <select id="style">
+        <option value="smart">Smart mix</option>
+        <option value="singles">One per slide</option>
+        <option value="pairs">Pairs</option>
+        <option value="collage">Collage</option>
+      </select></div>
+    <div class="row"><label for="maxSlides">Max slides</label><input id="maxSlides" type="number" min="1" max="20"></div>
+    <div class="gaprow"><label for="gap" class="muted">Gap</label><input id="gap" type="range" min="0" max="40" step="1"><span id="gapVal" class="muted"></span></div>
+    <div class="row"><label for="gapColor">Gap colour</label>
+      <select id="gapColor"><option value="#ffffff">White</option><option value="#000000">Black</option></select></div>
+    <label class="check"><input type="checkbox" id="keepOrder"> Keep shooting order</label>
+    <label class="check"><input type="checkbox" id="spreads"> Allow spreads across 2 slides</label>
+    <button id="regen" class="primary" title="Shortcut: R">🎲 Regenerate</button>
+  </div>
+
+  <div class="group" id="slideGroup">
+    <h3 id="slideHead">Slide</h3>
+    <div class="row"><label for="tpl">Template</label><select id="tpl"></select></div>
+    <div class="row"><label for="span">Spread over</label>
+      <select id="span"><option value="1">1 slide</option><option value="2">2 slides</option><option value="3">3 slides</option></select></div>
+    <div class="btns">
+      <button id="rerollBtn" title="Random template, pane sizes and crop reset for this slide">🎲 Re-roll slide</button>
+      <button id="coverBtn" title="Move this slide to the front">Make cover</button>
+      <button id="moveL">◀ Move</button>
+      <button id="moveR">Move ▶</button>
+      <button id="splitBtn" title="One slide per photo">Split</button>
+      <button id="mergeBtn" title="Combine with the next slide">Merge next</button>
+    </div>
+    <div class="btns">
+      <button id="resetBtn" title="Reset position and zoom of the selected photo">Reset crop</button>
+      <button id="removeBtn" title="Move the selected photo to Unused (Delete)">Remove photo</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Unused photos</h3>
+    <div id="tray"></div>
+    <div class="muted" id="trayHint">Removed photos land here. Click one to add it after the current slide.</div>
+    <div class="btns" style="grid-template-columns:1fr"><button id="restoreBtn">Put all back &amp; regenerate</button></div>
+  </div>
+
+  <div class="group" style="border:0">
+    <h3>Export</h3>
+    <div class="row"><label for="exportWidth">Width</label>
+      <select id="exportWidth"><option value="1080">1080 px</option><option value="1440">1440 px</option></select></div>
+  </div>
+</aside>
+
+<div id="overlay"><div id="overlayText"></div></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ---------- Constants ----------
+
+const BASE_W = 1080;           // gap is specified in px at this width
+const IG_MAX_SLIDES = 20;
+const RATIOS = { '4:5': 4 / 5, '3:4': 3 / 4, '1:1': 1, '3:2': 3 / 2 }; // width / height
+const MIN_SPLIT = 0.12;
+
+// Templates are split trees: a leaf is a cell index; 'v' stacks a over b, 'h' puts a left of b.
+// r is the default share of the first child; each slide keeps its own ratios (pre-order).
+const V = (a, b, r = 0.5) => ({ d: 'v', a, b, r });
+const Hz = (a, b, r = 0.5) => ({ d: 'h', a, b, r });
+const TEMPLATES = {
+  single:     { label: 'Single',           tree: 0 },
+  stack2:     { label: '2 stacked',        tree: V(0, 1) },
+  side2:      { label: '2 side by side',   tree: Hz(0, 1) },
+  stack3:     { label: '3 stacked',        tree: V(0, V(1, 2), 1 / 3) },
+  side3:      { label: '3 side by side',   tree: Hz(0, Hz(1, 2), 1 / 3) },
+  trioTop:    { label: '1 top + 2 below',  tree: V(0, Hz(1, 2)) },
+  trioBottom: { label: '2 top + 1 below',  tree: V(Hz(0, 1), 2) },
+  trioLeft:   { label: '1 left + 2 right', tree: Hz(0, V(1, 2)) },
+  trioRight:  { label: '2 left + 1 right', tree: Hz(V(0, 1), 2) },
+  grid4:      { label: '2 × 2 grid',       tree: V(Hz(0, 1), Hz(2, 3)) },
+};
+const TPL_BY_N = {};
+for (const [id, t] of Object.entries(TEMPLATES)) {
+  const ratios = [];
+  const walk = n => { if (typeof n === 'number') return 1; ratios.push(n.r); return walk(n.a) + walk(n.b); };
+  t.n = walk(t.tree);
+  t.ratios = ratios;
+  (TPL_BY_N[t.n] ||= []).push(id);
+}
+
+// k: preference weight per photos-per-slide. maxLoss: how much of a photo may be cropped away.
+const STYLES = {
+  smart:   { k: { 1: 1, 2: 1, 3: 0.35 },             maxLoss: 0.2 },
+  singles: { k: { 1: 1 },                            maxLoss: 1 },
+  pairs:   { k: { 1: 0.5, 2: 1 },                    maxLoss: 0.25 },
+  collage: { k: { 1: 0.25, 2: 0.8, 3: 1.2, 4: 0.9 }, maxLoss: 0.3 },
+};
+const SPREAD_PREF = 0.35;
+
+const DEFAULT_SETTINGS = { ratio: '4:5', style: 'smart', gap: 0, gapColor: '#ffffff', keepOrder: true, spreads: false, maxSlides: 10 };
+
+// ---------- State ----------
+
+const state = { root: null, posts: [], cur: -1, sel: 0, selCell: -1, busy: false };
+
+const $ = s => document.querySelector(s);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const post = () => state.posts[state.cur];
+const naturalSort = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+const slideCount = slides => slides.reduce((n, s) => n + s.span, 0);
+
+function storageGet(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+}
+function storageSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ }
+}
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? undefined : {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const d = await r.json().catch(() => ({ error: r.statusText }));
+  if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+  return d;
+}
+
+// ---------- UI helpers ----------
+
+let toastTimer;
+function toast(msg, ms = 3500) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+function busy(msg) {
+  state.busy = !!msg;
+  $('#overlayText').textContent = msg || '';
+  $('#overlay').classList.toggle('show', !!msg);
+}
+
+// ---------- Opening folders ----------
+
+async function loadRecent() {
+  try {
+    const { recent } = await api('/api/recent');
+    $('#recent').innerHTML = '';
+    for (const r of recent) { const o = document.createElement('option'); o.value = r; $('#recent').appendChild(o); }
+    if (!$('#rootPath').value && recent[0]) $('#rootPath').value = recent[0];
+  } catch { /* server offline */ }
+}
+
+async function browse() {
+  if (state.busy) return;
+  busy('Choose a folder in the dialog…');
+  try {
+    const { path } = await api('/api/pick', {});
+    busy(null);
+    if (path) { $('#rootPath').value = path; await openRoot(path); }
+  } catch (e) { busy(null); toast(e.message); }
+}
+
+async function openRoot(path) {
+  path = path.trim().replace(/^"(.*)"$/, '$1');
+  if (!path || state.busy) return;
+  busy('Opening folder…');
+  let d;
+  try { d = await api('/api/open?root=' + encodeURIComponent(path)); }
+  catch (e) { busy(null); toast(e.message, 6000); return; }
+  busy(null);
+  state.root = d.root;
+  $('#rootPath').value = d.root;
+  state.posts = d.posts.map(newPost);
+  state.cur = -1;
+  loadRecent();
+  if (!state.posts.length) { toast('No photos found in that folder or its subfolders.'); render(); return; }
+  selectPost(0);
+}
+
+function newPost(d) {
+  const photos = d.photos.map(ph => ({ ...ph, aspect: ph.w / ph.h, img: null, loading: false }));
+  photos.sort((a, b) => (b.cover - a.cover) || (a.taken - b.taken) || naturalSort(a.id, b.id));
+  const p = {
+    key: d.key, name: d.name,
+    photos: new Map(photos.map(ph => [ph.id, ph])),
+    order: photos.map(ph => ph.id),
+    settings: { ...DEFAULT_SETTINGS, ...storageGet('ig-studio-settings', {}) },
+    slides: [], unused: [],
+    undo: [], redo: [],
+    exported: d.exported,
+  };
+  if (!applySavedLayout(p, d.layout)) generate(p, false);
+  return p;
+}
+
+function applySavedLayout(p, d) {
+  if (!d || !Array.isArray(d.slides)) return false;
+  const valid = d.slides.every(sl =>
+    TEMPLATES[sl.tpl] && TEMPLATES[sl.tpl].n === sl.cells?.length && sl.cells.every(c => p.photos.has(c.p)));
+  if (!valid) { toast(`Saved layout for ${p.name} no longer matches its photos; regenerated.`); return false; }
+  p.settings = { ...DEFAULT_SETTINGS, ...d.settings };
+  p.slides = d.slides.map(sl => ({
+    tpl: sl.tpl,
+    span: clamp(sl.span || 1, 1, 3),
+    ratios: sl.ratios?.length === TEMPLATES[sl.tpl].ratios.length ? sl.ratios : [...TEMPLATES[sl.tpl].ratios],
+    cells: sl.cells.map(c => ({ p: c.p, fx: c.fx ?? 0.5, fy: c.fy ?? 0.5, z: c.z ?? 1 })),
+  }));
+  const used = new Set(p.slides.flatMap(sl => sl.cells.map(c => c.p)));
+  p.unused = p.order.filter(id => !used.has(id));
+  const added = p.unused.length - (d.unused || []).filter(id => p.photos.has(id)).length;
+  if (added > 0) toast(`${added} new photo(s) in ${p.name} are waiting in Unused photos.`);
+  return true;
+}
+
+function loadThumbs(p) {
+  for (const ph of p.photos.values()) {
+    if (ph.img || ph.loading) continue;
+    ph.loading = true;
+    const img = new Image();
+    img.onload = () => { ph.img = img; render(); };
+    img.onerror = () => { ph.loading = false; };
+    img.src = `/api/thumb?root=${encodeURIComponent(state.root)}&key=${encodeURIComponent(p.key)}`
+      + `&name=${encodeURIComponent(ph.id)}&v=${ph.v}`;
+  }
+}
+
+// ---------- Geometry ----------
+
+function roundRect([x, y, w, h]) {
+  const x0 = Math.round(x), y0 = Math.round(y);
+  return [x0, y0, Math.round(x + w) - x0, Math.round(y + h) - y0];
+}
+
+// Cell rects and dividers for a slide drawn into a W x H frame (W covers the whole spread).
+function layoutSlide(slide, W, H, g, ratios = slide.ratios) {
+  const rects = [], divs = [];
+  let k = 0;
+  const walk = (node, x, y, w, h) => {
+    if (typeof node === 'number') { rects[node] = [x, y, w, h]; return; }
+    const i = k++, r = ratios[i];
+    if (node.d === 'v') {
+      const ha = (h - g) * r;
+      walk(node.a, x, y, w, ha);
+      divs.push({ i, d: 'v', x, y, w, h, at: y + ha + g / 2 });
+      walk(node.b, x, y + ha + g, w, h - g - ha);
+    } else {
+      const wa = (w - g) * r;
+      walk(node.a, x, y, wa, h);
+      divs.push({ i, d: 'h', x, y, w, h, at: x + wa + g / 2 });
+      walk(node.b, x + wa + g, y, w - g - wa, h);
+    }
+  };
+  walk(TEMPLATES[slide.tpl].tree, 0, 0, W, H);
+  return { rects: rects.map(roundRect), divs };
+}
+
+const frameH = (s, W = BASE_W) => Math.round(W / RATIOS[s.ratio]);
+
+// Source crop for a cell: cover-fit scaled by zoom, positioned by focus (fx, fy in 0..1).
+function srcRect(iw, ih, r, c) {
+  const sc = Math.max(r[2] / iw, r[3] / ih) * c.z;
+  const sw = r[2] / sc, sh = r[3] / sc;
+  return [(iw - sw) * c.fx, (ih - sh) * c.fy, sw, sh];
+}
+
+// ---------- Layout generation ----------
+
+const cropLoss = (a, b) => 1 - Math.min(a, b) / Math.max(a, b);
+
+function permutations(a) {
+  if (a.length <= 1) return [a];
+  return a.flatMap((x, i) => permutations([...a.slice(0, i), ...a.slice(i + 1)]).map(r => [x, ...r]));
+}
+function combinations(a, k) {
+  if (k === 0) return [[]];
+  const out = [];
+  for (let i = 0; i <= a.length - k; i++) for (const r of combinations(a.slice(i + 1), k - 1)) out.push([a[i], ...r]);
+  return out;
+}
+
+// Best assignment of photos to a template's cells (least cropping).
+function fitGroup(group, tpl, s, span = 1, ratios = TEMPLATES[tpl].ratios) {
+  const { rects } = layoutSlide({ tpl }, BASE_W * span, frameH(s), s.gap, ratios);
+  let best = null;
+  for (const perm of permutations(group)) {
+    const losses = perm.map((ph, i) => cropLoss(ph.aspect, rects[i][2] / rects[i][3]));
+    const mean = losses.reduce((a, b) => a + b, 0) / losses.length;
+    if (!best || mean < best.mean) best = { order: perm, mean, max: Math.max(...losses) };
+  }
+  return best;
+}
+
+function weightedPick(items, weight) {
+  const ws = items.map(weight), total = ws.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < items.length; i++) if ((r -= ws[i]) <= 0) return items[i];
+  return items[items.length - 1];
+}
+
+const newCell = id => ({ p: id, fx: 0.5, fy: 0.5, z: 1 });
+const newSlide = (tpl, ids, span = 1, ratios = TEMPLATES[tpl].ratios) =>
+  ({ tpl, span, ratios: [...ratios], cells: ids.map(newCell) });
+
+// Random pane sizes that still crop acceptably; falls back to the defaults.
+function jitterRatios(group, tpl, s, span, maxLoss) {
+  const base = TEMPLATES[tpl].ratios;
+  if (!base.length) return { ratios: base, fit: fitGroup(group, tpl, s, span) };
+  for (let tries = 0; tries < 6; tries++) {
+    const ratios = base.map(r => (Math.random() < 0.6 ? clamp(r + (Math.random() - 0.5) * 0.3, 0.3, 0.7) : r));
+    const fit = fitGroup(group, tpl, s, span, ratios);
+    if (fit.max <= maxLoss) return { ratios, fit };
+  }
+  return { ratios: base, fit: fitGroup(group, tpl, s, span) };
+}
+
+// Greedy: take the next photo, consider grouping it with a few upcoming photos in every
+// template of the style, keep candidates that don't crop too much, then pick the best
+// (or a weighted-random one when regenerating).
+function buildSlides(photos, s, random) {
+  const style = STYLES[s.style];
+  const lookahead = s.keepOrder ? 3 : 5;
+  const queue = [...photos];
+  const slides = [];
+  while (queue.length) {
+    const first = queue[0], win = queue.slice(1, 1 + lookahead);
+    const cands = [];
+    for (const [kStr, pref] of Object.entries(style.k)) {
+      const k = +kStr;
+      if (k - 1 > win.length) continue;
+      for (const combo of combinations(win, k - 1)) {
+        // Penalise pulling photos forward out of shooting order.
+        const skipped = combo.reduce((a, ph) => a + win.indexOf(ph), 0) - (k - 1) * (k - 2) / 2;
+        for (const tpl of TPL_BY_N[k]) {
+          const fit = fitGroup([first, ...combo], tpl, s);
+          cands.push({ tpl, span: 1, fit, w: pref * Math.exp(-fit.mean * 10) * Math.pow(0.7, skipped) });
+        }
+      }
+    }
+    if (s.spreads && s.style !== 'singles') {
+      const fit = fitGroup([first], 'single', s, 2);
+      cands.push({ tpl: 'single', span: 2, fit, w: SPREAD_PREF * Math.exp(-fit.mean * 10) });
+    }
+    let ok = cands.filter(c => c.fit.max <= style.maxLoss);
+    // Nothing fits well: give this photo its own slide rather than badly cropping a partner too.
+    if (!ok.length) ok = cands.filter(c => c.tpl === 'single' && c.span === 1);
+    const pick = random ? weightedPick(ok, c => Math.pow(c.w, 0.6)) : ok.reduce((a, b) => (b.w > a.w ? b : a));
+    let { fit } = pick, ratios = TEMPLATES[pick.tpl].ratios;
+    if (random && fit.order.length > 1) ({ ratios, fit } = jitterRatios(fit.order, pick.tpl, s, pick.span, style.maxLoss));
+    slides.push(newSlide(pick.tpl, fit.order.map(ph => ph.id), pick.span, ratios));
+    for (const ph of fit.order) queue.splice(queue.indexOf(ph), 1);
+  }
+  return slides;
+}
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+function activePhotos(p) {
+  return p.order.filter(id => !p.unused.includes(id)).map(id => p.photos.get(id));
+}
+
+function generate(p, random) {
+  let photos = activePhotos(p);
+  if (!photos.length) { p.slides = []; return; }
+  if (random && !p.settings.keepOrder) photos = [photos[0], ...shuffle(photos.slice(1))];
+  let best = buildSlides(photos, p.settings, random);
+  // Over the slide limit: try random variants and keep the shortest.
+  for (let i = 0; i < 60 && slideCount(best) > p.settings.maxSlides; i++) {
+    const alt = buildSlides(photos, p.settings, true);
+    if (slideCount(alt) < slideCount(best)) best = alt;
+  }
+  p.slides = best;
+  if (p === post()) { state.sel = 0; state.selCell = -1; }
+}
+
+function bestTemplate(photos, s, span = 1) {
+  return TPL_BY_N[photos.length]
+    .map(tpl => ({ tpl, fit: fitGroup(photos, tpl, s, span) }))
+    .reduce((a, b) => (b.fit.mean < a.fit.mean ? b : a));
+}
+
+// ---------- Undo / persistence ----------
+
+const layoutData = p => ({ version: 2, settings: p.settings, slides: p.slides, unused: p.unused });
+const snapshotOf = p => JSON.stringify(layoutData(p));
+
+function restore(p, snap) {
+  const d = JSON.parse(snap);
+  p.settings = d.settings; p.slides = d.slides; p.unused = d.unused;
+  state.sel = clamp(state.sel, 0, Math.max(0, p.slides.length - 1));
+  state.selCell = -1;
+  syncControls();
+}
+
+function checkpoint(p = post()) {
+  p.undo.push(snapshotOf(p));
+  if (p.undo.length > 200) p.undo.shift();
+  p.redo = [];
+}
+
+function undo() {
+  const p = post();
+  if (!p || !p.undo.length) return;
+  p.redo.push(snapshotOf(p));
+  restore(p, p.undo.pop());
+  changed();
+}
+function redo() {
+  const p = post();
+  if (!p || !p.redo.length) return;
+  p.undo.push(snapshotOf(p));
+  restore(p, p.redo.pop());
+  changed();
+}
+
+let saveTimer;
+function changed() {
+  const p = post();
+  if (p) p.exported = false;
+  render();
+  if (!p) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    api('/api/layout', { root: state.root, key: p.key, layout: layoutData(p) })
+      .catch(e => toast(`Couldn't save layout: ${e.message}`));
+  }, 800);
+}
+
+// ---------- Rendering ----------
+
+function drawSlide(ctx, p, slide, W, H) {
+  ctx.fillStyle = p.settings.gapColor;
+  ctx.fillRect(0, 0, W, H);
+  const lay = layoutSlide(slide, W, H, p.settings.gap * (W / slide.span) / BASE_W);
+  ctx.imageSmoothingQuality = 'high';
+  slide.cells.forEach((c, i) => {
+    const img = p.photos.get(c.p).img, r = lay.rects[i];
+    if (!img) { ctx.fillStyle = '#2a2a30'; ctx.fillRect(r[0], r[1], r[2], r[3]); return; }
+    const [sx, sy, sw, sh] = srcRect(img.naturalWidth, img.naturalHeight, r, c);
+    ctx.drawImage(img, sx, sy, sw, sh, r[0], r[1], r[2], r[3]);
+  });
+  return lay;
+}
+
+function outlineRect(ctx, r, color, lw, dash) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.setLineDash(dash ? [lw * 2.5, lw * 2] : []);
+  ctx.strokeRect(r[0] + lw / 2, r[1] + lw / 2, r[2] - lw, r[3] - lw);
+  ctx.restore();
+}
+
+const editor = $('#editor');
+let editorLay = { rects: [], divs: [], g: 0 };   // CSS px, for hit testing
+let drag = null;       // pan or divider drag inside the editor
+let pdrag = null;      // photo swap drag (editor or strip)
+let hoverDiv = null;
+
+function renderEditor() {
+  const p = post(), slide = p?.slides?.[state.sel];
+  editor.classList.toggle('hidden', !slide);
+  $('#hint').classList.toggle('hidden', !slide);
+  if (!slide) return;
+  const main = editor.parentElement;
+  const availW = main.clientWidth - 32, availH = main.clientHeight - 56;
+  const aspect = RATIOS[p.settings.ratio] * slide.span;
+  const cssW = Math.floor(Math.min(availW, availH * aspect)), cssH = Math.floor(cssW / aspect);
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
+  if (editor.width !== W || editor.height !== H) { editor.width = W; editor.height = H; }
+  editor.style.width = cssW + 'px';
+  editor.style.height = cssH + 'px';
+  const ctx = editor.getContext('2d');
+  const lay = drawSlide(ctx, p, slide, W, H);
+  editorLay = {
+    rects: lay.rects.map(r => r.map(v => v / dpr)),
+    divs: lay.divs.map(d => ({ ...d, x: d.x / dpr, y: d.y / dpr, w: d.w / dpr, h: d.h / dpr, at: d.at / dpr })),
+    g: p.settings.gap * (cssW / slide.span) / BASE_W,
+  };
+  // Slide boundaries of a spread.
+  for (let k = 1; k < slide.span; k++) {
+    const x = Math.round(W * k / slide.span);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = dpr; ctx.setLineDash([6 * dpr, 6 * dpr]);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    ctx.restore();
+  }
+  const activeDiv = drag?.div || hoverDiv;
+  if (activeDiv) {
+    const d = lay.divs[activeDiv.i];
+    ctx.fillStyle = 'rgba(76,141,255,.9)';
+    if (d.d === 'v') ctx.fillRect(d.x, d.at - 2 * dpr, d.w, 4 * dpr);
+    else ctx.fillRect(d.at - 2 * dpr, d.y, 4 * dpr, d.h);
+  }
+  const lw = 3 * dpr;
+  if (slide.cells.length > 1 && state.selCell >= 0 && !pdrag) outlineRect(ctx, lay.rects[state.selCell], '#4c8dff', lw);
+  if (pdrag?.from.s === state.sel) outlineRect(ctx, lay.rects[pdrag.from.c], '#ffffff', lw, true);
+  if (pdrag?.target?.s === state.sel) outlineRect(ctx, lay.rects[pdrag.target.c], '#ffb547', lw);
+}
+
+let stripRects = [];   // per slide, CSS px cell rects inside its thumbnail
+function renderStrip() {
+  const p = post(), strip = $('#strip');
+  const slides = p?.slides || [];
+  while (strip.children.length > slides.length) strip.lastChild.remove();
+  while (strip.children.length < slides.length) {
+    const el = document.createElement('div');
+    el.className = 'thumb';
+    el.innerHTML = '<canvas></canvas><span></span>';
+    strip.appendChild(el);
+  }
+  const dpr = window.devicePixelRatio || 1, h = 104;
+  let n = 1;
+  stripRects = slides.map((slide, i) => {
+    const w = Math.round(h * RATIOS[p.settings.ratio] * slide.span);
+    const el = strip.children[i], cv = el.firstChild;
+    el.classList.toggle('active', i === state.sel);
+    const label = slide.span > 1 ? `${n}–${n + slide.span - 1}` : String(n);
+    el.lastChild.textContent = i === 0 ? `${label} · cover` : label;
+    n += slide.span;
+    const W = Math.round(w * dpr), H = Math.round(h * dpr);
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    cv.style.width = w + 'px';
+    cv.style.height = h + 'px';
+    const ctx = cv.getContext('2d');
+    const lay = drawSlide(ctx, p, slide, W, H);
+    if (pdrag?.target?.s === i) outlineRect(ctx, lay.rects[pdrag.target.c], '#ffb547', 2 * dpr);
+    if (pdrag?.from.s === i) outlineRect(ctx, lay.rects[pdrag.from.c], '#ffffff', 2 * dpr, true);
+    return lay.rects.map(r => r.map(v => v / dpr));
+  });
+}
+
+function renderPosts() {
+  const list = $('#postList');
+  if (!state.posts.length) { list.innerHTML = '<div class="muted" style="padding:4px">No folder open</div>'; return; }
+  list.innerHTML = '';
+  state.posts.forEach((p, i) => {
+    const el = document.createElement('div');
+    el.className = 'post' + (i === state.cur ? ' active' : '');
+    el.innerHTML = `<span></span><span class="meta">${p.exported ? '<span class="done">✓</span> ' : ''}${slideCount(p.slides)} slides</span>`;
+    el.firstChild.textContent = p.name;
+    el.title = `${p.photos.size} photos`;
+    el.addEventListener('click', () => selectPost(i));
+    list.appendChild(el);
+  });
+}
+
+function renderTray() {
+  const p = post(), tray = $('#tray');
+  tray.innerHTML = '';
+  const ids = p?.unused || [];
+  $('#trayHint').classList.toggle('hidden', !!ids.length);
+  $('#restoreBtn').disabled = !ids.length;
+  for (const id of ids) {
+    const ph = p.photos.get(id), dpr = window.devicePixelRatio || 1;
+    const h = 56, w = Math.round(h * ph.aspect);
+    const cv = document.createElement('canvas');
+    cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    const ctx = cv.getContext('2d');
+    if (ph.img) ctx.drawImage(ph.img, 0, 0, cv.width, cv.height);
+    else { ctx.fillStyle = '#2a2a30'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    cv.title = `${id} — click to add after the current slide`;
+    cv.addEventListener('click', () => actions.addFromTray(id));
+    tray.appendChild(cv);
+  }
+}
+
+function renderPanel() {
+  const p = post(), slide = p?.slides?.[state.sel];
+  const has = !!p;
+  for (const id of ['exportBtn', 'exportAllBtn', 'revealBtn', 'regen', 'ratio', 'style', 'maxSlides', 'gap', 'gapColor', 'keepOrder', 'spreads'])
+    $('#' + id).disabled = !has;
+  $('#undoBtn').disabled = !p?.undo.length;
+  $('#redoBtn').disabled = !p?.redo.length;
+  $('#postTitle').textContent = p?.name || '';
+  const badge = $('#countBadge'), n = p ? slideCount(p.slides) : 0;
+  badge.className = 'badge' + (n > IG_MAX_SLIDES ? ' bad' : n > (p?.settings.maxSlides ?? 99) ? ' warn' : '');
+  badge.textContent = n > IG_MAX_SLIDES ? `${n} slides — Instagram allows ${IG_MAX_SLIDES}`
+    : n > (p?.settings.maxSlides ?? 99) ? `${n} slides (over ${p.settings.maxSlides})` : `${n} slides`;
+  badge.classList.toggle('hidden', !n);
+
+  $('#slideGroup').classList.toggle('hidden', !slide);
+  if (slide) {
+    $('#slideHead').textContent = `Slide ${state.sel + 1} of ${p.slides.length}`;
+    const sel = $('#tpl');
+    sel.innerHTML = TPL_BY_N[slide.cells.length].map(t => `<option value="${t}">${TEMPLATES[t].label}</option>`).join('');
+    sel.value = slide.tpl;
+    sel.disabled = TPL_BY_N[slide.cells.length].length < 2;
+    $('#span').value = String(slide.span);
+    $('#moveL').disabled = $('#coverBtn').disabled = state.sel === 0;
+    const last = state.sel >= p.slides.length - 1;
+    $('#moveR').disabled = last;
+    $('#mergeBtn').disabled = last || slide.cells.length + p.slides[state.sel + 1].cells.length > 4;
+    $('#splitBtn').disabled = slide.cells.length < 2;
+    const cellOk = slide.cells.length === 1 || state.selCell >= 0;
+    $('#resetBtn').disabled = $('#removeBtn').disabled = !cellOk;
+    $('#removeBtn').title = cellOk ? 'Move the selected photo to Unused (Delete)' : 'Click a photo in the slide first';
+  }
+  $('#empty').classList.toggle('hidden', has);
+}
+
+function syncControls() {
+  const p = post();
+  if (!p) return;
+  const s = p.settings;
+  $('#ratio').value = s.ratio;
+  $('#style').value = s.style;
+  $('#maxSlides').value = s.maxSlides;
+  $('#gap').value = s.gap;
+  $('#gapVal').textContent = s.gap + 'px';
+  $('#gapColor').value = s.gapColor;
+  $('#keepOrder').checked = s.keepOrder;
+  $('#spreads').checked = s.spreads;
+}
+
+let renderQueued = false;
+function render() {
+  if (renderQueued) return;
+  renderQueued = true;
+  const run = () => {
+    if (!renderQueued) return;
+    renderQueued = false;
+    renderPosts(); renderPanel(); renderEditor(); renderStrip(); renderTray();
+  };
+  requestAnimationFrame(run);
+  setTimeout(run, 100);   // animation frames stall while the window is in the background
+}
+
+// ---------- Navigation ----------
+
+function selectPost(i) {
+  if (state.busy) return;
+  state.cur = i; state.sel = 0; state.selCell = -1;
+  loadThumbs(post());
+  syncControls();
+  render();
+}
+
+function selectSlide(i) {
+  const p = post();
+  if (!p?.slides?.length) return;
+  state.sel = clamp(i, 0, p.slides.length - 1);
+  state.selCell = -1;
+  render();
+  $('#strip').children[state.sel]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+// ---------- Editing ----------
+
+function currentCellIndex(slide) {
+  return slide.cells.length === 1 ? 0 : state.selCell;
+}
+const resetCrop = c => Object.assign(c, { fx: 0.5, fy: 0.5, z: 1 });
+
+function saveDefault(key, value) {
+  storageSet('ig-studio-settings', { ...storageGet('ig-studio-settings', {}), [key]: value });
+}
+
+const actions = {
+  setting(key, value, regenerate) {
+    const p = post();
+    checkpoint(p);
+    p.settings[key] = value;
+    saveDefault(key, value);
+    if (regenerate) generate(p, false);
+    changed();
+  },
+  regenerate() { const p = post(); checkpoint(p); generate(p, true); changed(); },
+  template(tpl) {
+    const slide = post().slides[state.sel];
+    checkpoint();
+    slide.tpl = tpl;
+    slide.ratios = [...TEMPLATES[tpl].ratios];
+    slide.cells.forEach(resetCrop);
+    changed();
+  },
+  span(n) {
+    const slide = post().slides[state.sel];
+    checkpoint();
+    slide.span = n;
+    slide.cells.forEach(resetCrop);
+    changed();
+  },
+  rerollSlide() {
+    const p = post(), slide = p.slides[state.sel];
+    const photos = slide.cells.map(c => p.photos.get(c.p));
+    const tpls = TPL_BY_N[photos.length];
+    const options = (tpls.length > 1 ? tpls.filter(t => t !== slide.tpl) : tpls)
+      .map(tpl => ({ tpl, fit: fitGroup(photos, tpl, p.settings, slide.span) }));
+    const pick = weightedPick(options, o => Math.exp(-o.fit.mean * 8));
+    const { ratios, fit } = jitterRatios(pick.fit.order, pick.tpl, p.settings, slide.span, 0.35);
+    checkpoint();
+    Object.assign(slide, newSlide(pick.tpl, fit.order.map(ph => ph.id), slide.span, ratios));
+    changed();
+  },
+  move(delta) {
+    const p = post(), j = state.sel + delta;
+    if (j < 0 || j >= p.slides.length) return;
+    checkpoint();
+    [p.slides[state.sel], p.slides[j]] = [p.slides[j], p.slides[state.sel]];
+    state.sel = j;
+    changed();
+  },
+  cover() {
+    const p = post();
+    checkpoint();
+    p.slides.unshift(...p.slides.splice(state.sel, 1));
+    state.sel = 0;
+    changed();
+  },
+  split() {
+    const p = post(), slide = p.slides[state.sel];
+    checkpoint();
+    p.slides.splice(state.sel, 1, ...slide.cells.map(c => newSlide('single', [c.p])));
+    state.selCell = -1;
+    changed();
+  },
+  mergeNext() {
+    const p = post(), a = p.slides[state.sel], b = p.slides[state.sel + 1];
+    const photos = [...a.cells, ...b.cells].map(c => p.photos.get(c.p));
+    const best = bestTemplate(photos, p.settings, a.span);
+    checkpoint();
+    p.slides.splice(state.sel, 2, newSlide(best.tpl, best.fit.order.map(ph => ph.id), a.span));
+    state.selCell = -1;
+    changed();
+  },
+  resetCrop() {
+    const slide = post().slides[state.sel], i = currentCellIndex(slide);
+    if (i < 0) return;
+    checkpoint();
+    resetCrop(slide.cells[i]);
+    changed();
+  },
+  removePhoto() {
+    const p = post(), slide = p.slides[state.sel], i = currentCellIndex(slide);
+    if (i < 0) return;
+    checkpoint();
+    const [cell] = slide.cells.splice(i, 1);
+    p.unused.push(cell.p);
+    if (!slide.cells.length) {
+      p.slides.splice(state.sel, 1);
+      state.sel = clamp(state.sel, 0, Math.max(0, p.slides.length - 1));
+    } else {
+      // Keep the remaining photos and their crops, refit to a template of the new size.
+      const photos = slide.cells.map(c => p.photos.get(c.p));
+      const best = bestTemplate(photos, p.settings, slide.span);
+      slide.tpl = best.tpl;
+      slide.ratios = [...TEMPLATES[best.tpl].ratios];
+      slide.cells = best.fit.order.map(ph => slide.cells.find(c => c.p === ph.id));
+    }
+    state.selCell = -1;
+    changed();
+  },
+  addFromTray(id) {
+    const p = post();
+    checkpoint();
+    p.unused = p.unused.filter(x => x !== id);
+    const at = p.slides.length ? state.sel + 1 : 0;
+    p.slides.splice(at, 0, newSlide('single', [id]));
+    state.sel = at; state.selCell = -1;
+    changed();
+  },
+  restoreAll() {
+    const p = post();
+    checkpoint();
+    p.unused = [];
+    generate(p, false);
+    changed();
+  },
+  swap(a, b) {
+    const p = post(), ca = p.slides[a.s].cells[a.c], cb = p.slides[b.s].cells[b.c];
+    checkpoint();
+    [ca.p, cb.p] = [cb.p, ca.p];
+    resetCrop(ca); resetCrop(cb);
+    if (b.s === state.sel) state.selCell = b.c;
+    else if (a.s === state.sel) state.selCell = a.c;
+    changed();
+  },
+  setRatio(i, r) {
+    post().slides[state.sel].ratios[i] = clamp(r, MIN_SPLIT, 1 - MIN_SPLIT);
+    render();
+  },
+};
+
+// ---------- Editor pointer interaction ----------
+
+function localPoint(e, el) {
+  const b = el.getBoundingClientRect();
+  return [e.clientX - b.left, e.clientY - b.top];
+}
+const inRect = ([x, y], r) => x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3];
+
+function hitCell(e) {
+  const pt = localPoint(e, editor);
+  return editorLay.rects.findIndex(r => inRect(pt, r));
+}
+
+function hitDivider(e) {
+  const [x, y] = localPoint(e, editor), tol = Math.max(6, editorLay.g / 2 + 3);
+  return editorLay.divs.find(d => d.d === 'v'
+    ? Math.abs(y - d.at) <= tol && x >= d.x && x <= d.x + d.w
+    : Math.abs(x - d.at) <= tol && y >= d.y && y <= d.y + d.h) || null;
+}
+
+editor.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const div = hitDivider(e);
+  if (div) {
+    checkpoint();
+    drag = { div };
+    editor.setPointerCapture(e.pointerId);
+    render();
+    return;
+  }
+  const i = hitCell(e);
+  if (i < 0) return;
+  state.selCell = i;
+  if (e.shiftKey) { startPhotoDrag({ s: state.sel, c: i }, e); return; }
+  drag = { i, x: e.clientX, y: e.clientY, moved: false };
+  editor.setPointerCapture(e.pointerId);
+  editor.style.cursor = 'grabbing';
+  render();
+});
+
+editor.addEventListener('pointermove', e => {
+  if (pdrag) return;
+  if (!drag) {
+    hoverDiv = hitDivider(e);
+    editor.style.cursor = hoverDiv ? (hoverDiv.d === 'v' ? 'row-resize' : 'col-resize') : hitCell(e) >= 0 ? 'grab' : 'default';
+    renderEditor();
+    return;
+  }
+  if (drag.div) {
+    const d = drag.div, [x, y] = localPoint(e, editor), g = editorLay.g;
+    actions.setRatio(d.i, d.d === 'v' ? (y - d.y - g / 2) / (d.h - g) : (x - d.x - g / 2) / (d.w - g));
+    return;
+  }
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+  const p = post(), c = p.slides[state.sel].cells[drag.i], r = editorLay.rects[drag.i];
+  if (!drag.moved) { checkpoint(p); drag.moved = true; }
+  const ph = p.photos.get(c.p);
+  const sc = Math.max(r[2] / ph.w, r[3] / ph.h) * c.z;
+  const rangeX = ph.w * sc - r[2], rangeY = ph.h * sc - r[3];
+  if (rangeX > 0.5) c.fx = clamp(c.fx - dx / rangeX, 0, 1);
+  if (rangeY > 0.5) c.fy = clamp(c.fy - dy / rangeY, 0, 1);
+  drag.x = e.clientX; drag.y = e.clientY;
+  render();
+});
+
+function endDrag() {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  editor.style.cursor = 'grab';
+  if (d.div || d.moved) changed();
+  else render();
+}
+editor.addEventListener('pointerup', endDrag);
+editor.addEventListener('pointercancel', endDrag);
+editor.addEventListener('pointerleave', () => { if (hoverDiv && !drag) { hoverDiv = null; renderEditor(); } });
+
+let wheelTimer = null;
+editor.addEventListener('wheel', e => {
+  const i = hitCell(e);
+  if (i < 0) return;
+  e.preventDefault();
+  const c = post().slides[state.sel].cells[i];
+  if (!wheelTimer) checkpoint();
+  clearTimeout(wheelTimer);
+  wheelTimer = setTimeout(() => { wheelTimer = null; }, 600);
+  c.z = clamp(c.z * Math.exp(-e.deltaY * 0.0015), 1, 5);
+  state.selCell = i;
+  changed();
+}, { passive: false });
+
+editor.addEventListener('dblclick', e => {
+  const div = hitDivider(e);
+  if (div) {
+    const slide = post().slides[state.sel];
+    slide.ratios[div.i] = TEMPLATES[slide.tpl].ratios[div.i];
+    changed();
+    return;
+  }
+  const i = hitCell(e);
+  if (i < 0) return;
+  state.selCell = i;
+  actions.resetCrop();
+});
+
+// ---------- Photo swap drag (editor <-> strip) ----------
+
+function startPhotoDrag(from, e) {
+  const p = post(), ph = p.photos.get(p.slides[from.s].cells[from.c].p);
+  const ghost = document.createElement('canvas');
+  ghost.id = 'ghost';
+  const h = 70, w = Math.round(h * ph.aspect);
+  ghost.width = w; ghost.height = h;
+  if (ph.img) ghost.getContext('2d').drawImage(ph.img, 0, 0, w, h);
+  document.body.appendChild(ghost);
+  pdrag = { from, ghost, target: null };
+  movePhotoDrag(e);
+}
+
+function dropTarget(e) {
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  if (el === editor) {
+    const c = hitCell(e);
+    return c >= 0 ? { s: state.sel, c } : null;
+  }
+  const th = el?.closest?.('.thumb');
+  if (!th) return null;
+  const s = [...$('#strip').children].indexOf(th);
+  const pt = localPoint(e, th.firstChild);
+  const c = (stripRects[s] || []).findIndex(r => inRect(pt, r));
+  return c >= 0 ? { s, c } : null;
+}
+
+function movePhotoDrag(e) {
+  pdrag.ghost.style.left = e.clientX + 12 + 'px';
+  pdrag.ghost.style.top = e.clientY + 12 + 'px';
+  const t = dropTarget(e);
+  pdrag.target = t && !(t.s === pdrag.from.s && t.c === pdrag.from.c) ? t : null;
+  render();
+}
+
+document.addEventListener('pointermove', e => { if (pdrag) movePhotoDrag(e); });
+document.addEventListener('pointerup', () => {
+  if (!pdrag) return;
+  const { from, target, ghost } = pdrag;
+  pdrag = null;
+  ghost.remove();
+  if (target) actions.swap(from, target);
+  else render();
+});
+
+// Strip: click selects a slide; dragging a photo out of a thumbnail starts a swap.
+let stripPress = null;
+$('#strip').addEventListener('pointerdown', e => {
+  const th = e.target.closest('.thumb');
+  if (!th || e.button !== 0) return;
+  const s = [...$('#strip').children].indexOf(th);
+  const pt = localPoint(e, th.firstChild);
+  stripPress = { s, c: (stripRects[s] || []).findIndex(r => inRect(pt, r)), x: e.clientX, y: e.clientY };
+});
+$('#strip').addEventListener('pointermove', e => {
+  if (!stripPress || pdrag) return;
+  if (Math.hypot(e.clientX - stripPress.x, e.clientY - stripPress.y) < 6 || stripPress.c < 0) return;
+  startPhotoDrag({ s: stripPress.s, c: stripPress.c }, e);
+  stripPress = null;
+});
+$('#strip').addEventListener('pointerup', () => {
+  if (stripPress) selectSlide(stripPress.s);
+  stripPress = null;
+});
+
+// ---------- Export ----------
+
+// Exact draw list per output file. Spreads are cut into one file per slide.
+function exportSpec(p, width) {
+  const H = frameH(p.settings, width), files = [];
+  for (const slide of p.slides) {
+    const { rects } = layoutSlide(slide, width * slide.span, H, p.settings.gap * width / BASE_W);
+    for (let k = 0; k < slide.span; k++) {
+      const f0 = k * width, f1 = f0 + width, ops = [];
+      slide.cells.forEach((c, i) => {
+        const r = rects[i], ph = p.photos.get(c.p);
+        const x0 = Math.max(r[0], f0), x1 = Math.min(r[0] + r[2], f1);
+        if (x1 <= x0) return;
+        const [sx, sy, sw, sh] = srcRect(ph.w, ph.h, r, c);
+        const t0 = (x0 - r[0]) / r[2], t1 = (x1 - r[0]) / r[2];
+        ops.push({
+          name: c.p, full: [ph.w, ph.h],
+          dest: [x0 - f0, r[1], x1 - x0, r[3]],
+          src: [(sx + sw * t0) / ph.w, sy / ph.h, (sx + sw * t1) / ph.w, (sy + sh) / ph.h],
+        });
+      });
+      files.push({ ops });
+    }
+  }
+  return { width, height: H, bg: p.settings.gapColor, files };
+}
+
+async function runExport(all) {
+  if (state.busy) return;
+  const targets = all ? state.posts : [post()];
+  const width = +$('#exportWidth').value;
+  let slides = 0;
+  const t0 = performance.now();
+  try {
+    for (const p of targets) {
+      if (!p.slides.length) continue;
+      busy(`Exporting ${p.name}…`);
+      const res = await api('/api/export', { root: state.root, key: p.key, ...exportSpec(p, width), layout: layoutData(p) });
+      slides += res.count;
+      p.exported = true;
+    }
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    toast(`Exported ${slides} slides in ${secs}s to _instagram\\${all ? '' : post().name}`);
+  } catch (e) {
+    toast(`Export failed: ${e.message}`, 6000);
+  } finally {
+    busy(null);
+    render();
+  }
+}
+
+// ---------- Wiring ----------
+
+$('#browseBtn').addEventListener('click', browse);
+$('#browseBtn2').addEventListener('click', browse);
+$('#openBtn').addEventListener('click', () => openRoot($('#rootPath').value));
+$('#rootPath').addEventListener('keydown', e => { if (e.key === 'Enter') openRoot(e.target.value); });
+$('#undoBtn').addEventListener('click', undo);
+$('#redoBtn').addEventListener('click', redo);
+$('#exportBtn').addEventListener('click', () => runExport(false));
+$('#exportAllBtn').addEventListener('click', () => runExport(true));
+$('#revealBtn').addEventListener('click', () => api('/api/reveal', { root: state.root, key: post().key }).catch(e => toast(e.message)));
+
+$('#ratio').addEventListener('change', e => actions.setting('ratio', e.target.value, true));
+$('#style').addEventListener('change', e => actions.setting('style', e.target.value, true));
+$('#maxSlides').addEventListener('change', e => actions.setting('maxSlides', clamp(+e.target.value || 10, 1, IG_MAX_SLIDES), false));
+$('#keepOrder').addEventListener('change', e => actions.setting('keepOrder', e.target.checked, false));
+$('#spreads').addEventListener('change', e => actions.setting('spreads', e.target.checked, false));
+$('#gapColor').addEventListener('change', e => actions.setting('gapColor', e.target.value, false));
+$('#gap').addEventListener('pointerdown', () => checkpoint());
+$('#gap').addEventListener('input', e => {
+  const p = post();
+  p.settings.gap = +e.target.value;
+  $('#gapVal').textContent = p.settings.gap + 'px';
+  saveDefault('gap', p.settings.gap);
+  changed();
+});
+$('#regen').addEventListener('click', () => actions.regenerate());
+$('#tpl').addEventListener('change', e => actions.template(e.target.value));
+$('#span').addEventListener('change', e => actions.span(+e.target.value));
+$('#rerollBtn').addEventListener('click', () => actions.rerollSlide());
+$('#coverBtn').addEventListener('click', () => actions.cover());
+$('#moveL').addEventListener('click', () => actions.move(-1));
+$('#moveR').addEventListener('click', () => actions.move(1));
+$('#splitBtn').addEventListener('click', () => actions.split());
+$('#mergeBtn').addEventListener('click', () => actions.mergeNext());
+$('#resetBtn').addEventListener('click', () => actions.resetCrop());
+$('#removeBtn').addEventListener('click', () => actions.removePhoto());
+$('#restoreBtn').addEventListener('click', () => actions.restoreAll());
+$('#exportWidth').addEventListener('change', e => storageSet('ig-studio-export-width', e.target.value));
+$('#exportWidth').value = storageGet('ig-studio-export-width', '1080');
+
+document.addEventListener('keydown', e => {
+  if (!post() || state.busy || e.target.matches('input, select, textarea')) return;
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  else if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); }
+  else if (e.ctrlKey || e.metaKey || e.altKey) return;
+  else if (k === 'arrowleft') selectSlide(state.sel - 1);
+  else if (k === 'arrowright') selectSlide(state.sel + 1);
+  else if (k === 'r') actions.regenerate();
+  else if (k === 'delete' || k === 'backspace') { if (post().slides[state.sel]) actions.removePhoto(); }
+});
+
+new ResizeObserver(() => render()).observe(editor.parentElement);
+
+// Debug/test hook.
+window.igStudio = { state, openRoot, exportSpec };
+
+loadRecent();
+render();
+</script>
+</body>
+</html>
