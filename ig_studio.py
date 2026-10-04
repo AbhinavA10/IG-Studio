@@ -215,8 +215,9 @@ def make_thumb(p: Path) -> bytes:
 
 
 def thumb_job(p: Path):
-    """One shared future per photo, so prefetch and browser requests never duplicate work."""
-    k = str(p)
+    """One shared future per photo version, so prefetch and browser requests never duplicate work."""
+    st = p.stat()
+    k = f"{p}|{st.st_mtime_ns}|{st.st_size}"  # a replaced or re-exported file gets a fresh thumbnail
     with _thumb_lock:
         job = _thumb_jobs.get(k)
         if job is None or (job.done() and job.exception()):
