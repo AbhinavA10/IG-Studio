@@ -153,10 +153,13 @@ picks up where you left off. Exporting again replaces that post's previous slide
   * *Pairs:* mostly two photos per slide.
   * *Collage:* 2–4 photos per slide.
 * **Max slides** (default 10). A spread counts as 2 slides.
-* **Gap** (default 0 = no borders) and gap colour.
+* **Gap** (default 0 = no borders) and **Background** colour (white or black), used for
+  gaps and for the bars around *Fit* photos.
 * **Keep shooting order:** when off, Regenerate shuffles everything except the first photo.
 * **Allow spreads across 2 slides:** lets Regenerate stretch a landscape across two
   consecutive slides.
+* **Fit awkward photos:** when a photo would be cropped badly on its own slide (e.g. a
+  landscape in a 4:5 post), Regenerate shows it whole with background bars instead.
 
 Name a file `cover…` or `!…` to make it the first photo.
 
@@ -168,12 +171,16 @@ Name a file `cover…` or `!…` to make it the first photo.
 | Zoom | Scroll wheel over the photo |
 | Reset crop | Double-click the photo |
 | Resize panes | Drag the divider between photos (double-click it to reset) |
-| Swap photos, within or between slides | Shift + drag a photo onto another photo in the editor or the strip, or drag directly between thumbnails in the strip |
-| Spread a slide over 2–3 slides | *Spread over* dropdown |
+| Set the slide type | **Single** (one photo, cropped to fill) · **Fit** (one photo shown whole, with background bars) · **Dual** (two photos; pulls in the next photo) · **Spread** (one photo across two slides). Photos that no longer fit move onto their own slides, so nothing is lost |
+| Add a slide | **＋ Add slide** (after the current one) or the **＋** tile at the end of the strip, then drag a photo onto the empty spot |
+| Swap or move photos | Shift + drag a photo in the editor, or drag one in the strip, onto any other spot. Onto a photo it swaps; onto an empty spot it moves |
+| Use an Unused photo | Drag it onto any spot (the photo there goes back to Unused), or click it to add it as a new slide |
+| Spread a slide over 2–3 slides | **Spread** type, or the *Spread over* dropdown |
 | Change layout | *Template* dropdown, or **🎲 Re-roll slide** (random template and pane sizes) |
 | Reorder | **◀ Move / Move ▶**, **Make cover** |
 | Split / combine | **Split**, **Merge next** |
-| Drop a photo | Click it, then **Remove photo** (or Delete). It moves to *Unused photos*; click it there to add it back |
+| Drop a photo | Click it, then **Remove photo** (or Delete), or drag it onto *Unused photos*. Click an empty spot and **Remove spot** to get rid of it |
+| Delete a slide | **Delete slide** (its photos go to Unused) |
 | Undo / redo | Ctrl+Z / Ctrl+Y |
 | Prev / next slide | ← / → |
 | Regenerate | R |

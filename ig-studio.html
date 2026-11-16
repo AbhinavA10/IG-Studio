@@ -63,9 +63,15 @@
     grid-area: strip; border-top: 1px solid var(--line); background: var(--panel);
     display: flex; gap: 10px; padding: 10px 12px; overflow-x: auto; align-items: flex-start; user-select: none;
   }
+  #thumbs { display: flex; gap: 10px; align-items: flex-start; }
   .thumb { flex: none; cursor: pointer; text-align: center; color: var(--muted); font-size: 11px; touch-action: none; }
   .thumb canvas { display: block; border: 2px solid transparent; border-radius: 3px; margin-bottom: 3px; }
   .thumb.active canvas { border-color: var(--accent); }
+  .add-tile {
+    flex: none; width: 56px; height: 104px; margin-top: 2px; font-size: 26px; color: var(--muted);
+    background: transparent; border: 2px dashed var(--line);
+  }
+  .add-tile:hover:not(:disabled) { color: var(--text); background: var(--panel2); }
 
   #panel { grid-area: panel; border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; overflow-x: hidden; padding: 8px 12px 16px; }
   .group { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 10px; }
@@ -74,9 +80,14 @@
   .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
   #regen { width: 100%; margin-top: 10px; padding: 9px; font-weight: 600; }
   .check { display: flex; gap: 6px; align-items: center; color: var(--muted); margin: 6px 0; cursor: pointer; }
-  #tray { display: flex; flex-wrap: wrap; gap: 6px; }
-  #tray canvas { cursor: pointer; border-radius: 3px; }
+  #tray { display: flex; flex-wrap: wrap; gap: 6px; min-height: 20px; border-radius: 6px; touch-action: none; }
+  #tray.drop { outline: 2px dashed var(--warn); outline-offset: 4px; }
+  #tray canvas { cursor: grab; border-radius: 3px; }
   #tray canvas:hover { outline: 2px solid var(--accent); }
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0 8px; }
+  .seg button { padding: 6px 2px; font-size: 12px; }
+  .seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .seglabel { color: var(--muted); margin-top: 4px; }
   .muted { color: var(--muted); font-size: 12px; }
   .gaprow { display: grid; grid-template-columns: 90px minmax(0, 1fr) 36px; align-items: center; gap: 8px; }
   .gaprow input { width: 100%; min-width: 0; margin: 0; }
@@ -123,7 +134,7 @@
 
 <main>
   <canvas id="editor" class="hidden"></canvas>
-  <div id="hint" class="hidden">Drag photo to reposition · Scroll to zoom · Drag a divider to resize · Shift+drag a photo onto any photo (here or in the strip) to swap</div>
+  <div id="hint" class="hidden">Drag photo to reposition · Scroll to zoom · Drag a divider to resize · Shift+drag a photo onto another spot (here, the strip or Unused) to swap or move it</div>
   <div id="empty">
     <button class="primary" id="browseBtn2">Choose trip folder…</button>
     <p>Each subfolder becomes one post; photos directly inside the folder also form a post.
@@ -131,7 +142,7 @@
   </div>
 </main>
 
-<div id="strip"></div>
+<div id="strip"><div id="thumbs"></div><button id="addTile" class="add-tile" title="Add an empty slide at the end">＋</button></div>
 
 <aside id="panel">
   <div class="group">
@@ -152,15 +163,23 @@
       </select></div>
     <div class="row"><label for="maxSlides">Max slides</label><input id="maxSlides" type="number" min="1" max="20"></div>
     <div class="gaprow"><label for="gap" class="muted">Gap</label><input id="gap" type="range" min="0" max="40" step="1"><span id="gapVal" class="muted"></span></div>
-    <div class="row"><label for="gapColor">Gap colour</label>
+    <div class="row"><label for="gapColor" title="Colour of gaps and of the bars around Fit photos">Background</label>
       <select id="gapColor"><option value="#ffffff">White</option><option value="#000000">Black</option></select></div>
     <label class="check"><input type="checkbox" id="keepOrder"> Keep shooting order</label>
     <label class="check"><input type="checkbox" id="spreads"> Allow spreads across 2 slides</label>
+    <label class="check" title="When a photo can't be cropped well on its own slide, show it whole with background bars"><input type="checkbox" id="fitLeftovers"> Fit awkward photos (bars, no crop)</label>
     <button id="regen" class="primary" title="Shortcut: R">🎲 Regenerate</button>
   </div>
 
   <div class="group" id="slideGroup">
     <h3 id="slideHead">Slide</h3>
+    <div class="seglabel">Slide type</div>
+    <div class="seg" id="slideType">
+      <button data-type="single" title="One photo filling the slide (cropped)">Single</button>
+      <button data-type="fit" title="One photo shown whole, with background bars">Fit</button>
+      <button data-type="dual" title="Two photos; pulls in the next photo">Dual</button>
+      <button data-type="spread" title="One photo across two slides">Spread</button>
+    </div>
     <div class="row"><label for="tpl">Template</label><select id="tpl"></select></div>
     <div class="row"><label for="span">Spread over</label>
       <select id="span"><option value="1">1 slide</option><option value="2">2 slides</option><option value="3">3 slides</option></select></div>
@@ -175,13 +194,15 @@
     <div class="btns">
       <button id="resetBtn" title="Reset position and zoom of the selected photo">Reset crop</button>
       <button id="removeBtn" title="Move the selected photo to Unused (Delete)">Remove photo</button>
+      <button id="addSlideBtn" title="Insert an empty slide after this one, then drag a photo onto it">＋ Add slide</button>
+      <button id="deleteSlideBtn" title="Delete this slide; its photos go to Unused">Delete slide</button>
     </div>
   </div>
 
-  <div class="group">
+  <div class="group" id="trayGroup">
     <h3>Unused photos</h3>
     <div id="tray"></div>
-    <div class="muted" id="trayHint">Removed photos land here. Click one to add it after the current slide.</div>
+    <div class="muted" id="trayHint">Removed photos land here. Click one to add it as a new slide, or drag it onto any spot in a slide.</div>
     <div class="btns" style="grid-template-columns:1fr"><button id="restoreBtn">Put all back &amp; regenerate</button></div>
   </div>
 
@@ -239,7 +260,10 @@ const STYLES = {
 };
 const SPREAD_PREF = 0.35;
 
-const DEFAULT_SETTINGS = { ratio: '4:5', style: 'smart', gap: 0, gapColor: '#ffffff', keepOrder: true, spreads: false, maxSlides: 10 };
+const DEFAULT_SETTINGS = {
+  ratio: '4:5', style: 'smart', gap: 0, gapColor: '#ffffff', keepOrder: true, spreads: false, fitLeftovers: false, maxSlides: 10,
+};
+const FIT_LOSS = 0.2;   // a single photo cropped more than this is shown whole when fitLeftovers is on
 
 // ---------- State ----------
 
@@ -340,16 +364,16 @@ function newPost(d) {
 function applySavedLayout(p, d) {
   if (!d || !Array.isArray(d.slides)) return false;
   const valid = d.slides.every(sl =>
-    TEMPLATES[sl.tpl] && TEMPLATES[sl.tpl].n === sl.cells?.length && sl.cells.every(c => p.photos.has(c.p)));
+    TEMPLATES[sl.tpl] && TEMPLATES[sl.tpl].n === sl.cells?.length && sl.cells.every(c => c.p === null || p.photos.has(c.p)));
   if (!valid) { toast(`Saved layout for ${p.name} no longer matches its photos; regenerated.`); return false; }
   p.settings = { ...DEFAULT_SETTINGS, ...d.settings };
   p.slides = d.slides.map(sl => ({
     tpl: sl.tpl,
     span: clamp(sl.span || 1, 1, 3),
     ratios: sl.ratios?.length === TEMPLATES[sl.tpl].ratios.length ? sl.ratios : [...TEMPLATES[sl.tpl].ratios],
-    cells: sl.cells.map(c => ({ p: c.p, fx: c.fx ?? 0.5, fy: c.fy ?? 0.5, z: c.z ?? 1 })),
+    cells: sl.cells.map(c => ({ p: c.p, fx: c.fx ?? 0.5, fy: c.fy ?? 0.5, z: c.z ?? 1, ...(c.fit ? { fit: true } : {}) })),
   }));
-  const used = new Set(p.slides.flatMap(sl => sl.cells.map(c => c.p)));
+  const used = new Set(p.slides.flatMap(sl => sl.cells.map(c => c.p)).filter(Boolean));
   p.unused = p.order.filter(id => !used.has(id));
   const added = p.unused.length - (d.unused || []).filter(id => p.photos.has(id)).length;
   if (added > 0) toast(`${added} new photo(s) in ${p.name} are waiting in Unused photos.`);
@@ -413,6 +437,17 @@ function srcRect(iw, ih, r, c) {
   return [(iw - sw) * c.fx, (ih - sh) * c.fy, sw, sh];
 }
 
+// Where a photo lands inside its cell: dest rect in px, and the source box as 0..1 of the photo.
+// Normally it's cropped to fill the cell; a fit cell shows the whole photo on background bars.
+function placeCell(aspect, r, c) {
+  if (c.fit) {
+    const sc = Math.min(r[2] / aspect, r[3]), w = aspect * sc, h = sc;
+    return { d: [r[0] + (r[2] - w) / 2, r[1] + (r[3] - h) / 2, w, h], s: [0, 0, 1, 1] };
+  }
+  const [sx, sy, sw, sh] = srcRect(aspect, 1, r, c);
+  return { d: r, s: [sx / aspect, sy, (sx + sw) / aspect, sy + sh] };
+}
+
 // ---------- Layout generation ----------
 
 const cropLoss = (a, b) => 1 - Math.min(a, b) / Math.max(a, b);
@@ -447,7 +482,7 @@ function weightedPick(items, weight) {
   return items[items.length - 1];
 }
 
-const newCell = id => ({ p: id, fx: 0.5, fy: 0.5, z: 1 });
+const newCell = id => ({ p: id, fx: 0.5, fy: 0.5, z: 1 });   // id null = an empty spot to fill
 const newSlide = (tpl, ids, span = 1, ratios = TEMPLATES[tpl].ratios) =>
   ({ tpl, span, ratios: [...ratios], cells: ids.map(newCell) });
 
@@ -496,7 +531,9 @@ function buildSlides(photos, s, random) {
     const pick = random ? weightedPick(ok, c => Math.pow(c.w, 0.6)) : ok.reduce((a, b) => (b.w > a.w ? b : a));
     let { fit } = pick, ratios = TEMPLATES[pick.tpl].ratios;
     if (random && fit.order.length > 1) ({ ratios, fit } = jitterRatios(fit.order, pick.tpl, s, pick.span, style.maxLoss));
-    slides.push(newSlide(pick.tpl, fit.order.map(ph => ph.id), pick.span, ratios));
+    const slide = newSlide(pick.tpl, fit.order.map(ph => ph.id), pick.span, ratios);
+    if (s.fitLeftovers && pick.tpl === 'single' && pick.span === 1 && fit.max > FIT_LOSS) slide.cells[0].fit = true;
+    slides.push(slide);
     for (const ph of fit.order) queue.splice(queue.indexOf(ph), 1);
   }
   return slides;
@@ -529,6 +566,47 @@ function bestTemplate(photos, s, span = 1) {
   return TPL_BY_N[photos.length]
     .map(tpl => ({ tpl, fit: fitGroup(photos, tpl, s, span) }))
     .reduce((a, b) => (b.fit.mean < a.fit.mean ? b : a));
+}
+
+// Re-pick the template after a slide's cells change, keeping each photo's crop.
+// With an empty spot there's nothing to fit, so use the plain default for that count.
+function refit(p, slide) {
+  if (slide.cells.some(c => !c.p)) {
+    const frameIsTall = RATIOS[p.settings.ratio] * slide.span < 1;
+    const opts = TPL_BY_N[slide.cells.length];
+    slide.tpl = slide.cells.length === 2 ? (frameIsTall ? 'stack2' : 'side2') : opts[0];
+  } else {
+    const best = bestTemplate(slide.cells.map(c => p.photos.get(c.p)), p.settings, slide.span);
+    slide.tpl = best.tpl;
+    slide.cells = best.fit.order.map(ph => slide.cells.find(c => c.p === ph.id));
+  }
+  slide.ratios = [...TEMPLATES[slide.tpl].ratios];
+}
+
+// Remove empty spots from a slide; drop the slide if nothing is left.
+function compactSlide(p, slide) {
+  slide.cells = slide.cells.filter(c => c.p);
+  if (!slide.cells.length) p.slides.splice(p.slides.indexOf(slide), 1);
+  else refit(p, slide);
+}
+
+// The next photo after slide i (taken out of its slide), else the first Unused photo, else null.
+function takeNextPhoto(p, i) {
+  for (let j = i + 1; j < p.slides.length; j++) {
+    const sl = p.slides[j], k = sl.cells.findIndex(c => c.p);
+    if (k < 0) continue;
+    const id = sl.cells[k].p;
+    sl.cells[k].p = null;
+    compactSlide(p, sl);
+    return id;
+  }
+  return p.unused.length ? p.unused.shift() : null;
+}
+
+function slideTypeOf(slide) {
+  const n = slide.cells.length;
+  if (n === 1) return slide.span > 1 ? 'spread' : slide.cells[0].fit ? 'fit' : 'single';
+  return n === 2 && slide.span === 1 ? 'dual' : null;
 }
 
 // ---------- Undo / persistence ----------
@@ -586,12 +664,27 @@ function drawSlide(ctx, p, slide, W, H) {
   const lay = layoutSlide(slide, W, H, p.settings.gap * (W / slide.span) / BASE_W);
   ctx.imageSmoothingQuality = 'high';
   slide.cells.forEach((c, i) => {
-    const img = p.photos.get(c.p).img, r = lay.rects[i];
+    const r = lay.rects[i];
+    if (!c.p) { drawEmptySpot(ctx, r); return; }
+    const ph = p.photos.get(c.p), img = ph.img;
     if (!img) { ctx.fillStyle = '#2a2a30'; ctx.fillRect(r[0], r[1], r[2], r[3]); return; }
-    const [sx, sy, sw, sh] = srcRect(img.naturalWidth, img.naturalHeight, r, c);
-    ctx.drawImage(img, sx, sy, sw, sh, r[0], r[1], r[2], r[3]);
+    const { d, s } = placeCell(ph.aspect, r, c), iw = img.naturalWidth, ih = img.naturalHeight;
+    ctx.drawImage(img, s[0] * iw, s[1] * ih, (s[2] - s[0]) * iw, (s[3] - s[1]) * ih, d[0], d[1], d[2], d[3]);
   });
   return lay;
+}
+
+function drawEmptySpot(ctx, r) {
+  ctx.fillStyle = '#26262d';
+  ctx.fillRect(r[0], r[1], r[2], r[3]);
+  const lw = Math.max(1, Math.min(r[2], r[3]) / 120);
+  ctx.save();
+  ctx.strokeStyle = '#5a5a66'; ctx.lineWidth = lw; ctx.setLineDash([lw * 4, lw * 3]);
+  ctx.strokeRect(r[0] + lw * 4, r[1] + lw * 4, r[2] - lw * 8, r[3] - lw * 8);
+  ctx.fillStyle = '#8a8a96'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(Math.min(r[2], r[3]) * 0.22)}px "Segoe UI", sans-serif`;
+  ctx.fillText('＋', r[0] + r[2] / 2, r[1] + r[3] / 2);
+  ctx.restore();
 }
 
 function outlineRect(ctx, r, color, lw, dash) {
@@ -651,7 +744,8 @@ function renderEditor() {
 
 let stripRects = [];   // per slide, CSS px cell rects inside its thumbnail
 function renderStrip() {
-  const p = post(), strip = $('#strip');
+  const p = post(), strip = $('#thumbs');
+  $('#addTile').disabled = !p;
   const slides = p?.slides || [];
   while (strip.children.length > slides.length) strip.lastChild.remove();
   while (strip.children.length < slides.length) {
@@ -698,6 +792,8 @@ function renderPosts() {
 
 function renderTray() {
   const p = post(), tray = $('#tray');
+  tray.classList.toggle('drop', !!pdrag?.target?.tray);
+  if (pdrag) return;   // keep the tray stable while something is being dragged over it
   tray.innerHTML = '';
   const ids = p?.unused || [];
   $('#trayHint').classList.toggle('hidden', !!ids.length);
@@ -710,8 +806,10 @@ function renderTray() {
     const ctx = cv.getContext('2d');
     if (ph.img) ctx.drawImage(ph.img, 0, 0, cv.width, cv.height);
     else { ctx.fillStyle = '#2a2a30'; ctx.fillRect(0, 0, cv.width, cv.height); }
-    cv.title = `${id} — click to add after the current slide`;
-    cv.addEventListener('click', () => actions.addFromTray(id));
+    cv.title = `${id} — click to add as a new slide, or drag onto a spot in a slide`;
+    cv.addEventListener('pointerdown', e => {
+      if (e.button === 0) trayPress = { id, x: e.clientX, y: e.clientY };
+    });
     tray.appendChild(cv);
   }
 }
@@ -719,7 +817,7 @@ function renderTray() {
 function renderPanel() {
   const p = post(), slide = p?.slides?.[state.sel];
   const has = !!p;
-  for (const id of ['exportBtn', 'exportAllBtn', 'revealBtn', 'regen', 'ratio', 'style', 'maxSlides', 'gap', 'gapColor', 'keepOrder', 'spreads'])
+  for (const id of ['exportBtn', 'exportAllBtn', 'revealBtn', 'regen', 'ratio', 'style', 'maxSlides', 'gap', 'gapColor', 'keepOrder', 'spreads', 'fitLeftovers'])
     $('#' + id).disabled = !has;
   $('#undoBtn').disabled = !p?.undo.length;
   $('#redoBtn').disabled = !p?.redo.length;
@@ -738,14 +836,20 @@ function renderPanel() {
     sel.value = slide.tpl;
     sel.disabled = TPL_BY_N[slide.cells.length].length < 2;
     $('#span').value = String(slide.span);
+    const type = slideTypeOf(slide);
+    for (const b of $('#slideType').children) b.classList.toggle('on', b.dataset.type === type);
     $('#moveL').disabled = $('#coverBtn').disabled = state.sel === 0;
     const last = state.sel >= p.slides.length - 1;
     $('#moveR').disabled = last;
     $('#mergeBtn').disabled = last || slide.cells.length + p.slides[state.sel + 1].cells.length > 4;
-    $('#splitBtn').disabled = slide.cells.length < 2;
-    const cellOk = slide.cells.length === 1 || state.selCell >= 0;
-    $('#resetBtn').disabled = $('#removeBtn').disabled = !cellOk;
-    $('#removeBtn').title = cellOk ? 'Move the selected photo to Unused (Delete)' : 'Click a photo in the slide first';
+    $('#splitBtn').disabled = slide.cells.filter(c => c.p).length < 2;
+    $('#rerollBtn').disabled = slide.cells.some(c => !c.p);
+    const ci = currentCellIndex(slide), cell = slide.cells[ci];
+    $('#resetBtn').disabled = !cell?.p;
+    $('#removeBtn').disabled = !cell;
+    $('#removeBtn').textContent = cell && !cell.p ? 'Remove spot' : 'Remove photo';
+    $('#removeBtn').title = !cell ? 'Click a photo in the slide first'
+      : cell.p ? 'Move the selected photo to Unused (Delete)' : 'Remove this empty spot (Delete)';
   }
   $('#empty').classList.toggle('hidden', has);
 }
@@ -762,6 +866,7 @@ function syncControls() {
   $('#gapColor').value = s.gapColor;
   $('#keepOrder').checked = s.keepOrder;
   $('#spreads').checked = s.spreads;
+  $('#fitLeftovers').checked = s.fitLeftovers;
 }
 
 let renderQueued = false;
@@ -793,7 +898,7 @@ function selectSlide(i) {
   state.sel = clamp(i, 0, p.slides.length - 1);
   state.selCell = -1;
   render();
-  $('#strip').children[state.sel]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  $('#thumbs').children[state.sel]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 // ---------- Editing ----------
@@ -834,6 +939,7 @@ const actions = {
   },
   rerollSlide() {
     const p = post(), slide = p.slides[state.sel];
+    if (slide.cells.some(c => !c.p)) return;
     const photos = slide.cells.map(c => p.photos.get(c.p));
     const tpls = TPL_BY_N[photos.length];
     const options = (tpls.length > 1 ? tpls.filter(t => t !== slide.tpl) : tpls)
@@ -862,16 +968,58 @@ const actions = {
   split() {
     const p = post(), slide = p.slides[state.sel];
     checkpoint();
-    p.slides.splice(state.sel, 1, ...slide.cells.map(c => newSlide('single', [c.p])));
+    p.slides.splice(state.sel, 1, ...slide.cells.filter(c => c.p).map(c => newSlide('single', [c.p])));
     state.selCell = -1;
     changed();
   },
   mergeNext() {
     const p = post(), a = p.slides[state.sel], b = p.slides[state.sel + 1];
-    const photos = [...a.cells, ...b.cells].map(c => p.photos.get(c.p));
-    const best = bestTemplate(photos, p.settings, a.span);
+    const photos = [...a.cells, ...b.cells].filter(c => c.p).map(c => p.photos.get(c.p));
     checkpoint();
-    p.slides.splice(state.sel, 2, newSlide(best.tpl, best.fit.order.map(ph => ph.id), a.span));
+    let merged = newSlide('single', [null]);
+    if (photos.length) {
+      const best = bestTemplate(photos, p.settings, a.span);
+      merged = newSlide(best.tpl, best.fit.order.map(ph => ph.id), a.span);
+    }
+    p.slides.splice(state.sel, 2, merged);
+    state.selCell = -1;
+    changed();
+  },
+  // Turn the current slide into one of the four basic kinds. No photo is ever lost:
+  // photos that no longer fit move onto their own slides right after this one.
+  slideType(type) {
+    const p = post(), slide = p.slides[state.sel];
+    if (slideTypeOf(slide) === type) return;
+    checkpoint();
+    const want = type === 'dual' ? 2 : 1;
+    const kept = slide.cells.slice(0, want);
+    const extra = slide.cells.slice(want).filter(c => c.p).map(c => newSlide('single', [c.p]));
+    if (kept.length < want) kept.push(newCell(takeNextPhoto(p, state.sel)));
+    kept.forEach(c => { delete c.fit; resetCrop(c); });
+    if (type === 'fit') kept[0].fit = true;
+    slide.cells = kept;
+    slide.span = type === 'spread' ? 2 : 1;
+    refit(p, slide);
+    p.slides.splice(p.slides.indexOf(slide) + 1, 0, ...extra);
+    state.sel = p.slides.indexOf(slide);
+    state.selCell = -1;
+    changed();
+  },
+  addSlide(at = state.sel + 1) {
+    const p = post();
+    checkpoint();
+    at = clamp(at, 0, p.slides.length);
+    p.slides.splice(at, 0, newSlide('single', [null]));
+    state.sel = at; state.selCell = -1;
+    changed();
+    toast('Drag a photo onto the empty slide: from Unused, the strip or the editor (Shift+drag).');
+  },
+  deleteSlide() {
+    const p = post(), slide = p.slides[state.sel];
+    checkpoint();
+    p.unused.push(...slide.cells.map(c => c.p).filter(Boolean));
+    p.slides.splice(state.sel, 1);
+    state.sel = clamp(state.sel, 0, Math.max(0, p.slides.length - 1));
     state.selCell = -1;
     changed();
   },
@@ -887,17 +1035,12 @@ const actions = {
     if (i < 0) return;
     checkpoint();
     const [cell] = slide.cells.splice(i, 1);
-    p.unused.push(cell.p);
+    if (cell.p) p.unused.push(cell.p);
     if (!slide.cells.length) {
       p.slides.splice(state.sel, 1);
       state.sel = clamp(state.sel, 0, Math.max(0, p.slides.length - 1));
     } else {
-      // Keep the remaining photos and their crops, refit to a template of the new size.
-      const photos = slide.cells.map(c => p.photos.get(c.p));
-      const best = bestTemplate(photos, p.settings, slide.span);
-      slide.tpl = best.tpl;
-      slide.ratios = [...TEMPLATES[best.tpl].ratios];
-      slide.cells = best.fit.order.map(ph => slide.cells.find(c => c.p === ph.id));
+      refit(p, slide);   // keep the remaining photos and their crops
     }
     state.selCell = -1;
     changed();
@@ -918,13 +1061,33 @@ const actions = {
     generate(p, false);
     changed();
   },
-  swap(a, b) {
-    const p = post(), ca = p.slides[a.s].cells[a.c], cb = p.slides[b.s].cells[b.c];
+  // A dragged photo dropped on a spot. Sources: a slide cell {s, c} or Unused {tray: id}.
+  // Targets: a slide cell, or Unused {tray: true}. Photos swap; an empty spot or Unused
+  // receives the photo, and the slide it left closes up behind it.
+  drop(from, to) {
+    const p = post(), selSlide = p.slides[state.sel];
+    const toSlide = to.tray ? null : p.slides[to.s], tc = toSlide?.cells[to.c];
     checkpoint();
-    [ca.p, cb.p] = [cb.p, ca.p];
-    resetCrop(ca); resetCrop(cb);
-    if (b.s === state.sel) state.selCell = b.c;
-    else if (a.s === state.sel) state.selCell = a.c;
+    if (from.tray) {
+      p.unused = p.unused.filter(x => x !== from.tray);
+      if (tc.p) p.unused.push(tc.p);
+      tc.p = from.tray;
+      resetCrop(tc);
+    } else {
+      const fromSlide = p.slides[from.s], fc = fromSlide.cells[from.c];
+      if (to.tray) {
+        p.unused.push(fc.p);
+        fc.p = null;
+      } else {
+        [fc.p, tc.p] = [tc.p, fc.p];
+        resetCrop(fc); resetCrop(tc);
+      }
+      if (!fc.p) compactSlide(p, fromSlide);
+    }
+    // Stay on the current slide; if it was emptied away, show where the photo went.
+    const sel = p.slides.includes(selSlide) ? selSlide : p.slides.includes(toSlide) ? toSlide : null;
+    state.sel = sel ? p.slides.indexOf(sel) : clamp(state.sel, 0, Math.max(0, p.slides.length - 1));
+    state.selCell = sel && sel === toSlide ? sel.cells.indexOf(tc) : -1;
     changed();
   },
   setRatio(i, r) {
@@ -966,7 +1129,7 @@ editor.addEventListener('pointerdown', e => {
   const i = hitCell(e);
   if (i < 0) return;
   state.selCell = i;
-  if (e.shiftKey) { startPhotoDrag({ s: state.sel, c: i }, e); return; }
+  if (e.shiftKey) { startPhotoDrag({ s: state.sel, c: i }, e); render(); return; }
   drag = { i, x: e.clientX, y: e.clientY, moved: false };
   editor.setPointerCapture(e.pointerId);
   editor.style.cursor = 'grabbing';
@@ -989,6 +1152,7 @@ editor.addEventListener('pointermove', e => {
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if (!drag.moved && Math.hypot(dx, dy) < 3) return;
   const p = post(), c = p.slides[state.sel].cells[drag.i], r = editorLay.rects[drag.i];
+  if (!c.p || c.fit) return;   // nothing to reposition: an empty spot, or a photo shown whole
   if (!drag.moved) { checkpoint(p); drag.moved = true; }
   const ph = p.photos.get(c.p);
   const sc = Math.max(r[2] / ph.w, r[3] / ph.h) * c.z;
@@ -1017,6 +1181,7 @@ editor.addEventListener('wheel', e => {
   if (i < 0) return;
   e.preventDefault();
   const c = post().slides[state.sel].cells[i];
+  if (!c.p || c.fit) return;
   if (!wheelTimer) checkpoint();
   clearTimeout(wheelTimer);
   wheelTimer = setTimeout(() => { wheelTimer = null; }, 600);
@@ -1039,10 +1204,12 @@ editor.addEventListener('dblclick', e => {
   actions.resetCrop();
 });
 
-// ---------- Photo swap drag (editor <-> strip) ----------
+// ---------- Photo drag (editor, strip and Unused) ----------
 
 function startPhotoDrag(from, e) {
-  const p = post(), ph = p.photos.get(p.slides[from.s].cells[from.c].p);
+  const p = post(), id = from.tray || p.slides[from.s].cells[from.c].p;
+  if (!id) return;   // an empty spot has nothing to drag
+  const ph = p.photos.get(id);
   const ghost = document.createElement('canvas');
   ghost.id = 'ghost';
   const h = 70, w = Math.round(h * ph.aspect);
@@ -1059,9 +1226,10 @@ function dropTarget(e) {
     const c = hitCell(e);
     return c >= 0 ? { s: state.sel, c } : null;
   }
+  if (el?.closest?.('#trayGroup')) return { tray: true };
   const th = el?.closest?.('.thumb');
   if (!th) return null;
-  const s = [...$('#strip').children].indexOf(th);
+  const s = [...$('#thumbs').children].indexOf(th);
   const pt = localPoint(e, th.firstChild);
   const c = (stripRects[s] || []).findIndex(r => inRect(pt, r));
   return c >= 0 ? { s, c } : null;
@@ -1070,37 +1238,48 @@ function dropTarget(e) {
 function movePhotoDrag(e) {
   pdrag.ghost.style.left = e.clientX + 12 + 'px';
   pdrag.ghost.style.top = e.clientY + 12 + 'px';
-  const t = dropTarget(e);
-  pdrag.target = t && !(t.s === pdrag.from.s && t.c === pdrag.from.c) ? t : null;
+  const t = dropTarget(e), f = pdrag.from;
+  const same = t && (t.tray ? !!f.tray : t.s === f.s && t.c === f.c);
+  pdrag.target = t && !same ? t : null;
   render();
 }
 
-document.addEventListener('pointermove', e => { if (pdrag) movePhotoDrag(e); });
+// Unused: click adds the photo as a new slide; dragging it places it onto a spot.
+let trayPress = null;
+document.addEventListener('pointermove', e => {
+  if (trayPress && !pdrag && Math.hypot(e.clientX - trayPress.x, e.clientY - trayPress.y) >= 6) {
+    startPhotoDrag({ tray: trayPress.id }, e);
+    trayPress = null;
+  }
+  if (pdrag) movePhotoDrag(e);
+});
 document.addEventListener('pointerup', () => {
+  if (trayPress) { const { id } = trayPress; trayPress = null; actions.addFromTray(id); return; }
   if (!pdrag) return;
   const { from, target, ghost } = pdrag;
   pdrag = null;
   ghost.remove();
-  if (target) actions.swap(from, target);
+  if (target) actions.drop(from, target);
   else render();
 });
 
-// Strip: click selects a slide; dragging a photo out of a thumbnail starts a swap.
+// Strip: click selects a slide; dragging a photo out of a thumbnail starts a drag.
 let stripPress = null;
-$('#strip').addEventListener('pointerdown', e => {
+$('#thumbs').addEventListener('pointerdown', e => {
   const th = e.target.closest('.thumb');
   if (!th || e.button !== 0) return;
-  const s = [...$('#strip').children].indexOf(th);
+  const s = [...$('#thumbs').children].indexOf(th);
   const pt = localPoint(e, th.firstChild);
   stripPress = { s, c: (stripRects[s] || []).findIndex(r => inRect(pt, r)), x: e.clientX, y: e.clientY };
 });
-$('#strip').addEventListener('pointermove', e => {
+$('#thumbs').addEventListener('pointermove', e => {
   if (!stripPress || pdrag) return;
   if (Math.hypot(e.clientX - stripPress.x, e.clientY - stripPress.y) < 6 || stripPress.c < 0) return;
-  startPhotoDrag({ s: stripPress.s, c: stripPress.c }, e);
+  const { s, c } = stripPress;
   stripPress = null;
+  startPhotoDrag({ s, c }, e);
 });
-$('#strip').addEventListener('pointerup', () => {
+$('#thumbs').addEventListener('pointerup', () => {
   if (stripPress) selectSlide(stripPress.s);
   stripPress = null;
 });
@@ -1115,16 +1294,17 @@ function exportSpec(p, width) {
     for (let k = 0; k < slide.span; k++) {
       const f0 = k * width, f1 = f0 + width, ops = [];
       slide.cells.forEach((c, i) => {
-        const r = rects[i], ph = p.photos.get(c.p);
-        const x0 = Math.max(r[0], f0), x1 = Math.min(r[0] + r[2], f1);
+        if (!c.p) return;
+        const ph = p.photos.get(c.p), { d, s } = placeCell(ph.aspect, rects[i], c);
+        const x0 = Math.round(Math.max(d[0], f0)), x1 = Math.round(Math.min(d[0] + d[2], f1));
         if (x1 <= x0) return;
-        const [sx, sy, sw, sh] = srcRect(ph.w, ph.h, r, c);
-        const t0 = (x0 - r[0]) / r[2], t1 = (x1 - r[0]) / r[2];
+        const t0 = (x0 - d[0]) / d[2], t1 = (x1 - d[0]) / d[2];
+        const y0 = Math.round(d[1]), y1 = Math.round(d[1] + d[3]);
         ops.push({
           name: c.p, full: [ph.w, ph.h],
-          dest: [x0 - f0, r[1], x1 - x0, r[3]],
+          dest: [x0 - f0, y0, x1 - x0, y1 - y0],
           // Clamp away floating-point overshoot when a photo exactly fills its cell.
-          src: [(sx + sw * t0) / ph.w, sy / ph.h, (sx + sw * t1) / ph.w, (sy + sh) / ph.h].map(v => clamp(v, 0, 1)),
+          src: [s[0] + (s[2] - s[0]) * t0, s[1], s[0] + (s[2] - s[0]) * t1, s[3]].map(v => clamp(v, 0, 1)),
         });
       });
       files.push({ ops });
@@ -1140,6 +1320,14 @@ async function runExport(all) {
   let slides = 0;
   const t0 = performance.now();
   try {
+    for (const p of targets) {
+      const empty = p.slides.findIndex(sl => sl.cells.some(c => !c.p));
+      if (empty >= 0) {
+        if (p !== post()) selectPost(state.posts.indexOf(p));
+        selectSlide(empty);
+        throw new Error(`${p.name}: slide ${empty + 1} has an empty spot. Drag a photo onto it, or remove the spot.`);
+      }
+    }
     for (const p of targets) {
       if (!p.slides.length) continue;
       busy(`Exporting ${p.name}…`);
@@ -1174,6 +1362,7 @@ $('#style').addEventListener('change', e => actions.setting('style', e.target.va
 $('#maxSlides').addEventListener('change', e => actions.setting('maxSlides', clamp(+e.target.value || 10, 1, IG_MAX_SLIDES), false));
 $('#keepOrder').addEventListener('change', e => actions.setting('keepOrder', e.target.checked, false));
 $('#spreads').addEventListener('change', e => actions.setting('spreads', e.target.checked, false));
+$('#fitLeftovers').addEventListener('change', e => actions.setting('fitLeftovers', e.target.checked, false));
 $('#gapColor').addEventListener('change', e => actions.setting('gapColor', e.target.value, false));
 $('#gap').addEventListener('pointerdown', () => checkpoint());
 $('#gap').addEventListener('input', e => {
@@ -1194,6 +1383,10 @@ $('#splitBtn').addEventListener('click', () => actions.split());
 $('#mergeBtn').addEventListener('click', () => actions.mergeNext());
 $('#resetBtn').addEventListener('click', () => actions.resetCrop());
 $('#removeBtn').addEventListener('click', () => actions.removePhoto());
+$('#addSlideBtn').addEventListener('click', () => actions.addSlide());
+$('#deleteSlideBtn').addEventListener('click', () => actions.deleteSlide());
+$('#addTile').addEventListener('click', () => actions.addSlide(post().slides.length));
+$('#slideType').addEventListener('click', e => { const b = e.target.closest('button'); if (b) actions.slideType(b.dataset.type); });
 $('#restoreBtn').addEventListener('click', () => actions.restoreAll());
 $('#exportWidth').addEventListener('change', e => storageSet('ig-studio-export-width', e.target.value));
 $('#exportWidth').value = storageGet('ig-studio-export-width', '1080');
