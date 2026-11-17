@@ -4,7 +4,7 @@ Run:  python ig_studio.py [trip folder] [--port=5178] [--no-browser]   (needs Pi
 Then the editor opens at http://localhost:5178/. The same arguments work for IGStudio.exe.
 
 The server reads photos straight from disk, serves cached preview thumbnails to the
-browser, and renders exported slides with Pillow into <trip>/_instagram/<post>/.
+browser, and renders exported slides with Pillow into <post folder>/_instagram/.
 Layout decisions are made in the browser; export requests carry exact crop boxes,
 so the server never has to re-derive the layout.
 """
@@ -64,7 +64,8 @@ def list_images(d: Path):
 
 
 def resolve_post(root: str, key: str):
-    """Returns (photo folder, output folder) for a post, refusing anything outside root."""
+    """Returns (photo folder, output folder) for a post, refusing anything outside root.
+    Slides go into an _instagram folder inside the post's own photo folder."""
     root_dir = Path(root).resolve()
     if not root_dir.is_dir():
         raise ValueError(f"Not a folder: {root}")
@@ -76,7 +77,13 @@ def resolve_post(root: str, key: str):
         src, name = root_dir / key, key
         if not src.is_dir():
             raise ValueError(f"Post folder not found: {key}")
-    return src, root_dir / OUT_DIR / name
+    return src, src / OUT_DIR
+
+
+def legacy_out_dir(root: str, key: str) -> Path:
+    """Where versions before 1.2 kept a post's slides and layout: <root>/_instagram/<post>."""
+    root_dir = Path(root).resolve()
+    return root_dir / OUT_DIR / (root_dir.name if key == ROOT_POST else key)
 
 
 def photo_path(root: str, key: str, name: str) -> Path:
@@ -144,9 +151,9 @@ def open_trip(root: str):
         all_files += files
         posts.append({
             "key": key,
-            "name": out.name,
+            "name": src.name,
             "photos": [x for x in INFO_POOL.map(safe_info, files) if x],
-            "layout": read_layout(out),
+            "layout": read_layout(out) or read_layout(legacy_out_dir(str(root_dir), key)),
             "exported": out.is_dir() and any(SLIDE_RE.match(f.name) for f in out.iterdir()),
         })
     for f in all_files:  # warm the thumbnail cache in the background, first post first
@@ -318,8 +325,8 @@ def pick_folder():
 
 
 def reveal(root, key):
-    _, out_dir = resolve_post(root, key)
-    target = out_dir if out_dir.is_dir() else out_dir.parent.parent
+    src, out_dir = resolve_post(root, key)
+    target = out_dir if out_dir.is_dir() else src
     if sys.platform == "win32":
         os.startfile(target)  # noqa: S606 - local folder chosen by the user
     else:

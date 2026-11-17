@@ -36,8 +36,8 @@ it, nudge the details, and export. Every post is ready to upload in a few minute
   slides for a seamless swipe.
 - **No borders, no upload.** The editor reads photos straight from disk. Export renders
   full-resolution sRGB JPEGs in parallel, in under a second for a whole post.
-- **Your originals are never touched.** Slides and the saved layout go into
-  `_instagram\` inside the trip folder, and reopening it picks up where you left off.
+- **Your originals are never touched.** Slides and the saved layout go into an
+  `_instagram\` folder next to your photos, and reopening it picks up where you left off.
 
 ![A landscape spread across slides 1–2, with the slide boundary marked](docs/spread.jpg)
 
@@ -125,43 +125,47 @@ running copy.
 
 ## Using it
 
-1. Export your photos into a trip folder, with one subfolder per post:
+1. Put each post's photos in their own folder, e.g. one per location. Either open that
+   folder directly, or open a parent folder whose subfolders are posts:
    ```
    Portugal/
      1 Lisbon/   *.jpg
      2 Sintra/   *.jpg
    ```
-   Photos directly inside the trip folder also form a post.
 2. Open the folder: **Browse…**, paste a path and press **Open**, or pick a recent
    folder from the path box.
 3. Pick a ratio and style, press **🎲 Regenerate** (or R) until you like the result,
    then fine-tune.
-4. Click **Export post** or **Export all**. Slides are written to
-   `Portugal\_instagram\<post>\01.jpg, 02.jpg…`; upload them in that order. Click 📂 to
-   open that folder in Explorer.
+4. Click **Export post** or **Export all**. Each post's slides are written to an
+   `_instagram` folder inside that post's folder, e.g. `1 Lisbon\_instagram\01.jpg, 02.jpg…`.
+   Upload them in that order. Click 📂 to open that folder in Explorer.
 
-Edits save automatically to `_instagram\<post>\layout.json`, so reopening the folder
-picks up where you left off. Exporting again replaces that post's previous slides.
+Edits save automatically to `_instagram\layout.json` in the same place, so reopening the
+folder picks up where you left off. Exporting again replaces that post's previous slides.
+(Layouts saved by older versions, in `<parent>\_instagram\<post>\`, are still picked up.)
 
 ### Post settings
 
 * **Ratio:** 4:5, 3:4, 1:1 or 3:2. Every slide in a post uses the same ratio, which
   Instagram requires.
 * **Style:** you choose it; the number of photos never decides it.
-  * *Smart mix:* photos that suit the frame get their own slide; the rest are paired to fit.
+  * *Smart mix:* a mix of stacked pairs and single photos; for a 4:5 post full of
+    landscapes it alternates pairs with *Fit* slides.
   * *One per slide:* every photo on its own slide.
   * *Pairs:* mostly two photos per slide.
   * *Collage:* 2–4 photos per slide.
 * **Max slides** (default 10). A spread counts as 2 slides.
-* **Gap** (default 0 = no borders) and **Background** colour (white or black), used for
-  gaps and for the bars around *Fit* photos.
-* **Keep shooting order:** when off, Regenerate shuffles everything except the first photo.
+* **Gap** (default 0 = no borders) and **Background** colour (default black; or white),
+  used for gaps and for the bars around *Fit* photos.
+* **Keep shooting order:** when off, Regenerate shuffles all the photos.
 * **Allow spreads across 2 slides:** lets Regenerate stretch a landscape across two
   consecutive slides.
-* **Fit awkward photos:** when a photo would be cropped badly on its own slide (e.g. a
-  landscape in a 4:5 post), Regenerate shows it whole with background bars instead.
 
-Name a file `cover…` or `!…` to make it the first photo.
+A photo that would be cropped badly on its own slide (e.g. a landscape in a 4:5 post) is
+never cropped automatically: it's shown whole as a *Fit* slide. Choose **Single** on the
+slide to crop it anyway; that choice sticks.
+
+Name a file `cover…` or `!…` to make it the first photo, even when shuffling.
 
 ### Editing
 

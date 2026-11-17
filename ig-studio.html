@@ -138,7 +138,7 @@
   <div id="empty">
     <button class="primary" id="browseBtn2">Choose trip folder…</button>
     <p>Each subfolder becomes one post; photos directly inside the folder also form a post.
-       Slides are exported to <b>_instagram\&lt;post&gt;</b> inside the trip folder.</p>
+       Slides are exported to an <b>_instagram</b> folder inside each post's folder.</p>
   </div>
 </main>
 
@@ -167,7 +167,6 @@
       <select id="gapColor"><option value="#ffffff">White</option><option value="#000000">Black</option></select></div>
     <label class="check"><input type="checkbox" id="keepOrder"> Keep shooting order</label>
     <label class="check"><input type="checkbox" id="spreads"> Allow spreads across 2 slides</label>
-    <label class="check" title="When a photo can't be cropped well on its own slide, show it whole with background bars"><input type="checkbox" id="fitLeftovers"> Fit awkward photos (bars, no crop)</label>
     <button id="regen" class="primary" title="Shortcut: R">🎲 Regenerate</button>
   </div>
 
@@ -252,18 +251,21 @@ for (const [id, t] of Object.entries(TEMPLATES)) {
 }
 
 // k: preference weight per photos-per-slide. maxLoss: how much of a photo may be cropped away.
+// fit: preference for a photo shown whole on its own slide, used when cropping it to the
+// frame would lose too much (e.g. a landscape in a 4:5 post).
 const STYLES = {
-  smart:   { k: { 1: 1, 2: 1, 3: 0.35 },             maxLoss: 0.2 },
-  singles: { k: { 1: 1 },                            maxLoss: 1 },
-  pairs:   { k: { 1: 0.5, 2: 1 },                    maxLoss: 0.25 },
-  collage: { k: { 1: 0.25, 2: 0.8, 3: 1.2, 4: 0.9 }, maxLoss: 0.3 },
+  smart:   { k: { 1: 1, 2: 1, 3: 0.35 },             fit: 0.5,  maxLoss: 0.2 },
+  singles: { k: { 1: 1 },                            fit: 1,    maxLoss: 1 },
+  pairs:   { k: { 1: 0.5, 2: 1 },                    fit: 0.3,  maxLoss: 0.25 },
+  collage: { k: { 1: 0.25, 2: 0.8, 3: 1.2, 4: 0.9 }, fit: 0.15, maxLoss: 0.3 },
 };
 const SPREAD_PREF = 0.35;
+const REPEAT_PENALTY = 0.7;   // nudges generation away from the same kind of slide twice in a row
 
 const DEFAULT_SETTINGS = {
-  ratio: '4:5', style: 'smart', gap: 0, gapColor: '#ffffff', keepOrder: true, spreads: false, fitLeftovers: false, maxSlides: 10,
+  ratio: '4:5', style: 'smart', gap: 0, gapColor: '#000000', keepOrder: true, spreads: false, maxSlides: 10,
 };
-const FIT_LOSS = 0.2;   // a single photo cropped more than this is shown whole when fitLeftovers is on
+const FIT_LOSS = 0.2;   // a photo alone on a slide that would be cropped more than this is shown whole
 
 // ---------- State ----------
 
@@ -371,7 +373,9 @@ function applySavedLayout(p, d) {
     tpl: sl.tpl,
     span: clamp(sl.span || 1, 1, 3),
     ratios: sl.ratios?.length === TEMPLATES[sl.tpl].ratios.length ? sl.ratios : [...TEMPLATES[sl.tpl].ratios],
-    cells: sl.cells.map(c => ({ p: c.p, fx: c.fx ?? 0.5, fy: c.fy ?? 0.5, z: c.z ?? 1, ...(c.fit ? { fit: true } : {}) })),
+    cells: sl.cells.map(c => ({
+      p: c.p, fx: c.fx ?? 0.5, fy: c.fy ?? 0.5, z: c.z ?? 1, ...(c.fit ? { fit: true } : {}), ...(c.manual ? { manual: true } : {}),
+    })),
   }));
   const used = new Set(p.slides.flatMap(sl => sl.cells.map(c => c.p)).filter(Boolean));
   p.unused = p.order.filter(id => !used.has(id));
@@ -506,6 +510,7 @@ function buildSlides(photos, s, random) {
   const lookahead = s.keepOrder ? 3 : 5;
   const queue = [...photos];
   const slides = [];
+  let prevKind = null;
   while (queue.length) {
     const first = queue[0], win = queue.slice(1, 1 + lookahead);
     const cands = [];
@@ -517,14 +522,20 @@ function buildSlides(photos, s, random) {
         const skipped = combo.reduce((a, ph) => a + win.indexOf(ph), 0) - (k - 1) * (k - 2) / 2;
         for (const tpl of TPL_BY_N[k]) {
           const fit = fitGroup([first, ...combo], tpl, s);
-          cands.push({ tpl, span: 1, fit, w: pref * Math.exp(-fit.mean * 10) * Math.pow(0.7, skipped) });
+          // A photo that would be cropped badly on its own slide is shown whole instead.
+          if (k === 1 && fit.max > FIT_LOSS) {
+            cands.push({ tpl, span: 1, kind: 'fit', fitCell: true, fit: { order: [first], mean: 0, max: 0 }, w: style.fit });
+            continue;
+          }
+          cands.push({ tpl, span: 1, kind: tpl, fit, w: pref * Math.exp(-fit.mean * 10) * Math.pow(0.7, skipped) });
         }
       }
     }
     if (s.spreads && s.style !== 'singles') {
       const fit = fitGroup([first], 'single', s, 2);
-      cands.push({ tpl: 'single', span: 2, fit, w: SPREAD_PREF * Math.exp(-fit.mean * 10) });
+      cands.push({ tpl: 'single', span: 2, kind: 'spread', fit, w: SPREAD_PREF * Math.exp(-fit.mean * 10) });
     }
+    for (const c of cands) if (c.kind === prevKind) c.w *= REPEAT_PENALTY;
     let ok = cands.filter(c => c.fit.max <= style.maxLoss);
     // Nothing fits well: give this photo its own slide rather than badly cropping a partner too.
     if (!ok.length) ok = cands.filter(c => c.tpl === 'single' && c.span === 1);
@@ -532,8 +543,9 @@ function buildSlides(photos, s, random) {
     let { fit } = pick, ratios = TEMPLATES[pick.tpl].ratios;
     if (random && fit.order.length > 1) ({ ratios, fit } = jitterRatios(fit.order, pick.tpl, s, pick.span, style.maxLoss));
     const slide = newSlide(pick.tpl, fit.order.map(ph => ph.id), pick.span, ratios);
-    if (s.fitLeftovers && pick.tpl === 'single' && pick.span === 1 && fit.max > FIT_LOSS) slide.cells[0].fit = true;
+    if (pick.fitCell) slide.cells[0].fit = true;
     slides.push(slide);
+    prevKind = pick.kind;
     for (const ph of fit.order) queue.splice(queue.indexOf(ph), 1);
   }
   return slides;
@@ -551,7 +563,11 @@ function activePhotos(p) {
 function generate(p, random) {
   let photos = activePhotos(p);
   if (!photos.length) { p.slides = []; return; }
-  if (random && !p.settings.keepOrder) photos = [photos[0], ...shuffle(photos.slice(1))];
+  if (random && !p.settings.keepOrder) {
+    // Shuffle everything; only a photo deliberately named cover… or !… stays first.
+    const pinned = photos[0].cover ? 1 : 0;
+    photos = [...photos.slice(0, pinned), ...shuffle(photos.slice(pinned))];
+  }
   let best = buildSlides(photos, p.settings, random);
   // Over the slide limit: try random variants and keep the shortest.
   for (let i = 0; i < 60 && slideCount(best) > p.settings.maxSlides; i++) {
@@ -587,7 +603,7 @@ function refit(p, slide) {
 function compactSlide(p, slide) {
   slide.cells = slide.cells.filter(c => c.p);
   if (!slide.cells.length) p.slides.splice(p.slides.indexOf(slide), 1);
-  else refit(p, slide);
+  else { refit(p, slide); autoFit(p, slide); }
 }
 
 // The next photo after slide i (taken out of its slide), else the first Unused photo, else null.
@@ -601,6 +617,16 @@ function takeNextPhoto(p, i) {
     return id;
   }
   return p.unused.length ? p.unused.shift() : null;
+}
+
+// A photo left alone on a slide by an automatic action is shown whole if cropping it to the
+// frame would lose too much. A Single or Fit the user picked (cell.manual) is left alone.
+function autoFit(p, slide) {
+  const c = slide?.cells[0];
+  if (!c || slide.cells.length !== 1 || slide.span !== 1 || !c.p || c.manual) return;
+  const awkward = cropLoss(p.photos.get(c.p).aspect, RATIOS[p.settings.ratio]) > FIT_LOSS;
+  if (awkward) c.fit = true;
+  else delete c.fit;
 }
 
 function slideTypeOf(slide) {
@@ -817,7 +843,7 @@ function renderTray() {
 function renderPanel() {
   const p = post(), slide = p?.slides?.[state.sel];
   const has = !!p;
-  for (const id of ['exportBtn', 'exportAllBtn', 'revealBtn', 'regen', 'ratio', 'style', 'maxSlides', 'gap', 'gapColor', 'keepOrder', 'spreads', 'fitLeftovers'])
+  for (const id of ['exportBtn', 'exportAllBtn', 'revealBtn', 'regen', 'ratio', 'style', 'maxSlides', 'gap', 'gapColor', 'keepOrder', 'spreads'])
     $('#' + id).disabled = !has;
   $('#undoBtn').disabled = !p?.undo.length;
   $('#redoBtn').disabled = !p?.redo.length;
@@ -866,7 +892,6 @@ function syncControls() {
   $('#gapColor').value = s.gapColor;
   $('#keepOrder').checked = s.keepOrder;
   $('#spreads').checked = s.spreads;
-  $('#fitLeftovers').checked = s.fitLeftovers;
 }
 
 let renderQueued = false;
@@ -968,7 +993,9 @@ const actions = {
   split() {
     const p = post(), slide = p.slides[state.sel];
     checkpoint();
-    p.slides.splice(state.sel, 1, ...slide.cells.filter(c => c.p).map(c => newSlide('single', [c.p])));
+    const singles = slide.cells.filter(c => c.p).map(c => newSlide('single', [c.p]));
+    singles.forEach(sl => autoFit(p, sl));
+    p.slides.splice(state.sel, 1, ...singles);
     state.selCell = -1;
     changed();
   },
@@ -994,9 +1021,11 @@ const actions = {
     const want = type === 'dual' ? 2 : 1;
     const kept = slide.cells.slice(0, want);
     const extra = slide.cells.slice(want).filter(c => c.p).map(c => newSlide('single', [c.p]));
+    extra.forEach(sl => autoFit(p, sl));
     if (kept.length < want) kept.push(newCell(takeNextPhoto(p, state.sel)));
-    kept.forEach(c => { delete c.fit; resetCrop(c); });
+    kept.forEach(c => { delete c.fit; delete c.manual; resetCrop(c); });
     if (type === 'fit') kept[0].fit = true;
+    if (type === 'single' || type === 'fit') kept[0].manual = true;   // an explicit choice; keep it
     slide.cells = kept;
     slide.span = type === 'spread' ? 2 : 1;
     refit(p, slide);
@@ -1041,6 +1070,7 @@ const actions = {
       state.sel = clamp(state.sel, 0, Math.max(0, p.slides.length - 1));
     } else {
       refit(p, slide);   // keep the remaining photos and their crops
+      autoFit(p, slide);
     }
     state.selCell = -1;
     changed();
@@ -1050,7 +1080,9 @@ const actions = {
     checkpoint();
     p.unused = p.unused.filter(x => x !== id);
     const at = p.slides.length ? state.sel + 1 : 0;
-    p.slides.splice(at, 0, newSlide('single', [id]));
+    const slide = newSlide('single', [id]);
+    autoFit(p, slide);
+    p.slides.splice(at, 0, slide);
     state.sel = at; state.selCell = -1;
     changed();
   },
@@ -1083,7 +1115,9 @@ const actions = {
         resetCrop(fc); resetCrop(tc);
       }
       if (!fc.p) compactSlide(p, fromSlide);
+      else autoFit(p, fromSlide);
     }
+    autoFit(p, toSlide);
     // Stay on the current slide; if it was emptied away, show where the photo went.
     const sel = p.slides.includes(selSlide) ? selSlide : p.slides.includes(toSlide) ? toSlide : null;
     state.sel = sel ? p.slides.indexOf(sel) : clamp(state.sel, 0, Math.max(0, p.slides.length - 1));
@@ -1336,7 +1370,7 @@ async function runExport(all) {
       p.exported = true;
     }
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
-    toast(`Exported ${slides} slides in ${secs}s to _instagram\\${all ? '' : post().name}`);
+    toast(`Exported ${slides} slides in ${secs}s to ${all ? "each post's _instagram folder" : post().name + '\\_instagram'}`);
   } catch (e) {
     toast(`Export failed: ${e.message}`, 6000);
   } finally {
@@ -1362,7 +1396,6 @@ $('#style').addEventListener('change', e => actions.setting('style', e.target.va
 $('#maxSlides').addEventListener('change', e => actions.setting('maxSlides', clamp(+e.target.value || 10, 1, IG_MAX_SLIDES), false));
 $('#keepOrder').addEventListener('change', e => actions.setting('keepOrder', e.target.checked, false));
 $('#spreads').addEventListener('change', e => actions.setting('spreads', e.target.checked, false));
-$('#fitLeftovers').addEventListener('change', e => actions.setting('fitLeftovers', e.target.checked, false));
 $('#gapColor').addEventListener('change', e => actions.setting('gapColor', e.target.value, false));
 $('#gap').addEventListener('pointerdown', () => checkpoint());
 $('#gap').addEventListener('input', e => {
