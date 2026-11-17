@@ -185,9 +185,11 @@ Name a file `cover…` or `!…` to make it the first photo, even when shuffling
 | Split / combine | **Split**, **Merge next** |
 | Drop a photo | Click it, then **Remove photo** (or Delete), or drag it onto *Unused photos*. Click an empty spot and **Remove spot** to get rid of it |
 | Delete a slide | **Delete slide** (its photos go to Unused) |
+| Pin a slide | Click the pin in the top-right corner of a slide in the strip, **📌 Pin slide**, or P. Regenerating (and changing ratio or style) keeps pinned slides exactly as they are, in the same place, and lays out the other photos around them |
 | Undo / redo | Ctrl+Z / Ctrl+Y |
 | Prev / next slide | ← / → |
 | Regenerate | R |
+| Pin / unpin the current slide | P |
 
 Supported files: JPEG, PNG, TIFF, WebP. Export is 1080 px wide by default (1440 px
 optional), as sRGB JPEG at quality 95.

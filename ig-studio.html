@@ -65,7 +65,17 @@
   }
   #thumbs { display: flex; gap: 10px; align-items: flex-start; }
   .thumb { flex: none; cursor: pointer; text-align: center; color: var(--muted); font-size: 11px; touch-action: none; }
+  .thumb { position: relative; }
   .thumb canvas { display: block; border: 2px solid transparent; border-radius: 3px; margin-bottom: 3px; }
+  .thumb .pin {
+    position: absolute; top: 5px; right: 5px; width: 24px; height: 24px; padding: 0; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.25); color: #fff; opacity: 0;
+  }
+  .thumb:hover .pin { opacity: .85; }
+  .thumb .pin:hover { opacity: 1; border-color: #fff; }
+  .thumb.pinned .pin { opacity: 1; background: var(--accent); border-color: var(--accent); }
+  .thumb .pin svg { width: 14px; height: 14px; }
   .thumb.active canvas { border-color: var(--accent); }
   .add-tile {
     flex: none; width: 56px; height: 104px; margin-top: 2px; font-size: 26px; color: var(--muted);
@@ -193,6 +203,7 @@
     <div class="btns">
       <button id="resetBtn" title="Reset position and zoom of the selected photo">Reset crop</button>
       <button id="removeBtn" title="Move the selected photo to Unused (Delete)">Remove photo</button>
+      <button id="pinBtn" title="Keep this slide as it is when regenerating (P)">📌 Pin slide</button>
       <button id="addSlideBtn" title="Insert an empty slide after this one, then drag a photo onto it">＋ Add slide</button>
       <button id="deleteSlideBtn" title="Delete this slide; its photos go to Unused">Delete slide</button>
     </div>
@@ -371,6 +382,7 @@ function applySavedLayout(p, d) {
   p.settings = { ...DEFAULT_SETTINGS, ...d.settings };
   p.slides = d.slides.map(sl => ({
     tpl: sl.tpl,
+    ...(sl.pinned ? { pinned: true } : {}),
     span: clamp(sl.span || 1, 1, 3),
     ratios: sl.ratios?.length === TEMPLATES[sl.tpl].ratios.length ? sl.ratios : [...TEMPLATES[sl.tpl].ratios],
     cells: sl.cells.map(c => ({
@@ -560,22 +572,37 @@ function activePhotos(p) {
   return p.order.filter(id => !p.unused.includes(id)).map(id => p.photos.get(id));
 }
 
+// Lay out the post again. Pinned slides stay exactly as they are, at the same positions;
+// the remaining photos are laid out around them.
 function generate(p, random) {
-  let photos = activePhotos(p);
-  if (!photos.length) { p.slides = []; return; }
-  if (random && !p.settings.keepOrder) {
+  const pinned = p.slides.map((sl, i) => ({ sl, i })).filter(x => x.sl.pinned);
+  const pinnedIds = new Set(pinned.flatMap(x => x.sl.cells.map(c => c.p)));
+  let photos = activePhotos(p).filter(ph => !pinnedIds.has(ph.id));
+  if (random && !p.settings.keepOrder && photos.length) {
     // Shuffle everything; only a photo deliberately named cover… or !… stays first.
-    const pinned = photos[0].cover ? 1 : 0;
-    photos = [...photos.slice(0, pinned), ...shuffle(photos.slice(pinned))];
+    const keepFirst = photos[0].cover ? 1 : 0;
+    photos = [...photos.slice(0, keepFirst), ...shuffle(photos.slice(keepFirst))];
   }
-  let best = buildSlides(photos, p.settings, random);
+  const budget = Math.max(1, p.settings.maxSlides - slideCount(pinned.map(x => x.sl)));
+  let best = photos.length ? buildSlides(photos, p.settings, random) : [];
   // Over the slide limit: try random variants and keep the shortest.
-  for (let i = 0; i < 60 && slideCount(best) > p.settings.maxSlides; i++) {
+  for (let i = 0; i < 60 && photos.length && slideCount(best) > budget; i++) {
     const alt = buildSlides(photos, p.settings, true);
     if (slideCount(alt) < slideCount(best)) best = alt;
   }
-  p.slides = best;
+  p.slides = mergePinned(pinned, best);
   if (p === post()) { state.sel = 0; state.selCell = -1; }
+}
+
+// Put pinned slides back at their old indexes, filling the gaps with generated slides.
+function mergePinned(pinned, generated) {
+  const out = [], queue = [...generated];
+  let k = 0;
+  while (k < pinned.length || queue.length) {
+    if (k < pinned.length && (pinned[k].i <= out.length || !queue.length)) out.push(pinned[k++].sl);
+    else out.push(queue.shift());
+  }
+  return out;
 }
 
 function bestTemplate(photos, s, span = 1) {
@@ -606,11 +633,12 @@ function compactSlide(p, slide) {
   else { refit(p, slide); autoFit(p, slide); }
 }
 
-// The next photo after slide i (taken out of its slide), else the first Unused photo, else null.
+// The next photo after slide i (taken out of its slide, skipping pinned slides),
+// else the first Unused photo, else null.
 function takeNextPhoto(p, i) {
   for (let j = i + 1; j < p.slides.length; j++) {
     const sl = p.slides[j], k = sl.cells.findIndex(c => c.p);
-    if (k < 0) continue;
+    if (k < 0 || sl.pinned) continue;
     const id = sl.cells[k].p;
     sl.cells[k].p = null;
     compactSlide(p, sl);
@@ -777,7 +805,10 @@ function renderStrip() {
   while (strip.children.length < slides.length) {
     const el = document.createElement('div');
     el.className = 'thumb';
-    el.innerHTML = '<canvas></canvas><span></span>';
+    el.innerHTML = '<canvas></canvas><span class="lbl"></span>'
+      + '<button class="pin" title="Pin: keep this slide when regenerating">'
+      + '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 3.5 20.5 8l-2.3.7-3.7 3.7.6 4.6-1.8 1.8-3.6-3.6L5 20l-1-1 4.8-4.7-3.6-3.6 1.8-1.8 4.6.6 3.7-3.7z"/></svg>'
+      + '</button>';
     strip.appendChild(el);
   }
   const dpr = window.devicePixelRatio || 1, h = 104;
@@ -787,7 +818,9 @@ function renderStrip() {
     const el = strip.children[i], cv = el.firstChild;
     el.classList.toggle('active', i === state.sel);
     const label = slide.span > 1 ? `${n}–${n + slide.span - 1}` : String(n);
-    el.lastChild.textContent = i === 0 ? `${label} · cover` : label;
+    el.querySelector('.lbl').textContent = i === 0 ? `${label} · cover` : label;
+    el.classList.toggle('pinned', !!slide.pinned);
+    el.querySelector('.pin').title = slide.pinned ? 'Pinned: kept when regenerating. Click to unpin' : 'Pin: keep this slide when regenerating';
     n += slide.span;
     const W = Math.round(w * dpr), H = Math.round(h * dpr);
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
@@ -862,6 +895,8 @@ function renderPanel() {
     sel.value = slide.tpl;
     sel.disabled = TPL_BY_N[slide.cells.length].length < 2;
     $('#span').value = String(slide.span);
+    $('#pinBtn').textContent = slide.pinned ? '📌 Unpin slide' : '📌 Pin slide';
+    $('#pinBtn').classList.toggle('primary', !!slide.pinned);
     const type = slideTypeOf(slide);
     for (const b of $('#slideType').children) b.classList.toggle('on', b.dataset.type === type);
     $('#moveL').disabled = $('#coverBtn').disabled = state.sel === 0;
@@ -946,7 +981,19 @@ const actions = {
     if (regenerate) generate(p, false);
     changed();
   },
-  regenerate() { const p = post(); checkpoint(p); generate(p, true); changed(); },
+  regenerate() {
+    const p = post();
+    if (p.slides.length && p.slides.every(sl => sl.pinned)) { toast('Every slide is pinned. Unpin one to regenerate.'); return; }
+    checkpoint(p); generate(p, true); changed();
+  },
+  togglePin(i = state.sel) {
+    const p = post(), slide = p.slides[i];
+    if (!slide) return;
+    checkpoint();
+    if (slide.pinned) delete slide.pinned;
+    else slide.pinned = true;
+    changed();
+  },
   template(tpl) {
     const slide = post().slides[state.sel];
     checkpoint();
@@ -994,7 +1041,7 @@ const actions = {
     const p = post(), slide = p.slides[state.sel];
     checkpoint();
     const singles = slide.cells.filter(c => c.p).map(c => newSlide('single', [c.p]));
-    singles.forEach(sl => autoFit(p, sl));
+    singles.forEach(sl => { autoFit(p, sl); if (slide.pinned) sl.pinned = true; });
     p.slides.splice(state.sel, 1, ...singles);
     state.selCell = -1;
     changed();
@@ -1008,6 +1055,7 @@ const actions = {
       const best = bestTemplate(photos, p.settings, a.span);
       merged = newSlide(best.tpl, best.fit.order.map(ph => ph.id), a.span);
     }
+    if (a.pinned || b.pinned) merged.pinned = true;
     p.slides.splice(state.sel, 2, merged);
     state.selCell = -1;
     changed();
@@ -1300,6 +1348,7 @@ document.addEventListener('pointerup', () => {
 // Strip: click selects a slide; dragging a photo out of a thumbnail starts a drag.
 let stripPress = null;
 $('#thumbs').addEventListener('pointerdown', e => {
+  if (e.target.closest('.pin')) return;
   const th = e.target.closest('.thumb');
   if (!th || e.button !== 0) return;
   const s = [...$('#thumbs').children].indexOf(th);
@@ -1312,6 +1361,10 @@ $('#thumbs').addEventListener('pointermove', e => {
   const { s, c } = stripPress;
   stripPress = null;
   startPhotoDrag({ s, c }, e);
+});
+$('#thumbs').addEventListener('click', e => {
+  const pin = e.target.closest('.pin');
+  if (pin) actions.togglePin([...$('#thumbs').children].indexOf(pin.closest('.thumb')));
 });
 $('#thumbs').addEventListener('pointerup', () => {
   if (stripPress) selectSlide(stripPress.s);
@@ -1417,6 +1470,7 @@ $('#mergeBtn').addEventListener('click', () => actions.mergeNext());
 $('#resetBtn').addEventListener('click', () => actions.resetCrop());
 $('#removeBtn').addEventListener('click', () => actions.removePhoto());
 $('#addSlideBtn').addEventListener('click', () => actions.addSlide());
+$('#pinBtn').addEventListener('click', () => actions.togglePin());
 $('#deleteSlideBtn').addEventListener('click', () => actions.deleteSlide());
 $('#addTile').addEventListener('click', () => actions.addSlide(post().slides.length));
 $('#slideType').addEventListener('click', e => { const b = e.target.closest('button'); if (b) actions.slideType(b.dataset.type); });
@@ -1433,6 +1487,7 @@ document.addEventListener('keydown', e => {
   else if (k === 'arrowleft') selectSlide(state.sel - 1);
   else if (k === 'arrowright') selectSlide(state.sel + 1);
   else if (k === 'r') actions.regenerate();
+  else if (k === 'p') actions.togglePin();
   else if (k === 'delete' || k === 'backspace') { if (post().slides[state.sel]) actions.removePhoto(); }
 });
 
